@@ -98,6 +98,15 @@ mm_render() {
       "$ROOT/install/adapters/$adapter"
 }
 
+# Compose the final injected body: the agent header plus the shared memory
+# protocol (auto recall, semi-auto capture). Authored once in _protocol.md.
+mm_compose() {
+  local adapter="$1"
+  mm_render "$adapter"
+  printf '\n'
+  mm_render "_protocol.md"
+}
+
 mm_inject_one() {
   local agent="$1"
   local kind path adapter
@@ -110,7 +119,7 @@ mm_inject_one() {
     if [ "$INLINE" = 1 ] && [ "$kind" = skill ]; then
       mm_note "   (inline mode: would embed full SKILL.md)"
     else
-      mm_render "$adapter" | sed 's/^/   | /'
+      mm_compose "$adapter" | sed 's/^/   | /'
     fi
     return 0
   fi
@@ -123,14 +132,14 @@ mm_inject_one() {
       cp "$ROOT/SKILL.md" "$path"
     else
       [ -f "$path" ] && [ "$FORCE" = 0 ] && mm_die "exists (use --force): $path"
-      mm_render "$adapter" > "$path"
+      mm_compose "$adapter" > "$path"
     fi
     return 0
   fi
 
   if [ "$kind" = rules ]; then
     [ -f "$path" ] && [ "$FORCE" = 0 ] && mm_die "exists (use --force): $path"
-    mm_render "$adapter" > "$path"
+    mm_compose "$adapter" > "$path"
     return 0
   fi
 
@@ -145,7 +154,7 @@ mm_inject_one() {
   fi
   {
     printf '\n<!-- begin memovault -->\n'
-    mm_render "$adapter"
+    mm_compose "$adapter"
     printf '<!-- end memovault -->\n'
   } >> "$path"
 }

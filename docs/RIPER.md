@@ -133,3 +133,44 @@ Self-tested against bash 3.2.57 with a throwaway vault. Findings and fixes:
 - Verified installer `--dry-run` renders stubs and resolves placeholders for
   every supported agent.
 - Naming contract (`AGENTS.md` section 2) upheld; no emoji in any file.
+
+## 4. Entry: always-on memory protocol (2026-07-14)
+
+### Research
+- User asked whether triggering must be explicit or can be automatic.
+- Confirmed the mechanism: skill "trigger" is always the agent's own decision
+  based on loaded instructions; there is no OS-level hook without extra
+  integration. opencode keeps `~/.config/opencode/AGENTS.md` in context every
+  turn, so an always-on instruction there is effectively automatic.
+
+### Innovate
+- Passive pointer stub vs proactive protocol vs event hooks. Chose the proactive
+  protocol embedded in the always-loaded instructions (reliable and cross-agent);
+  deferred true event-driven hooks (opencode plugins, Claude Code hooks) to a
+  later phase.
+- Split behavior: recall (read) fully automatic; capture (write) semi-automatic
+  (propose then confirm) to avoid noise and wrong captures.
+
+### Plan (approved)
+- Author the protocol once in `install/adapters/_protocol.md`.
+- Slim every per-agent adapter to a header; `install.sh` composes header +
+  protocol via a new `mm_compose`.
+- Document the protocol in `SKILL.md` (new section 6) and renumber subsequent
+  sections.
+- Re-inject opencode with `--force`.
+
+### Execute
+- Added `install/adapters/_protocol.md`.
+- Rewrote all 10 adapter files to minimal headers; cursor adapter set
+  `alwaysApply: true`.
+- `install.sh`: added `mm_compose`; skill/rules/agents injection now emits the
+  composed body.
+- `SKILL.md`: inserted section 6 (Memory protocol), renumbered 7-10.
+- Reinstalled source; re-injected opencode (`--force`).
+
+### Review
+- `bash -n install.sh` passes; `--dry-run` shows header + protocol composed with
+  placeholders resolved for every agent.
+- opencode `~/.config/opencode/AGENTS.md` now carries the full protocol block
+  (idempotent markers intact, CodeGraph block untouched).
+- No emoji in any changed file.

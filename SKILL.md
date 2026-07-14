@@ -165,7 +165,32 @@ obsidian property:set name=heat value=evergreen path="brain/travel/Trip Plan.md"
 
 See `docs/CLI-REFERENCE.md` for the curated command list.
 
-## 6. Suggested capture flow
+## 6. Memory protocol (auto recall, semi-auto capture)
+
+This skill is meant to be always on, not only triggered by an explicit
+"remember" command. Follow this protocol every turn.
+
+### Recall (automatic)
+
+At the start of answering a user request:
+1. Run `search "<narrow keywords>"` against the vault.
+2. If a hit is relevant, `read` it and weave the knowledge into your answer.
+3. If the vault is empty or nothing matches, skip silently (do not narrate).
+Keep it cheap: one search per task.
+
+### Capture (semi-automatic)
+
+When the turn produced durable knowledge (a decision, fix or lesson, how-to,
+design rationale, or non-obvious fact):
+1. Propose first: "I can save this to <domain>/<title>, linking [[related]]. Do it?"
+2. On confirmation: `new <domain> "<title>" --tags ... --body "..."`, then add
+   `[[wikilinks]]` and short `aliases`. New notes start `heat: seedling`.
+3. If the user explicitly says "remember this" / "记一下" / "沉淀一下", capture
+   immediately, then confirm what you saved.
+4. Do not capture small talk, transient debug output, or anything not worth
+   searching for later.
+
+## 7. Suggested capture flow
 
 1. `preflight` once.
 2. Decide the domain and a concise human readable title.
@@ -177,7 +202,7 @@ See `docs/CLI-REFERENCE.md` for the curated command list.
    it does not exist yet.
 6. If the note is clearly important, suggest `promote`.
 
-## 7. fs mode notes
+## 8. fs mode notes
 
 When the helper reports `fs` mode:
 - Notes are plain markdown files under `$AGENT_MEMO_VAULT/brain/<domain>/`.
@@ -188,7 +213,7 @@ When the helper reports `fs` mode:
   user and offer to run a follow up `search` to fix stale links when `cli` mode
   returns.
 
-## 8. Safety
+## 9. Safety
 
 - Destructive ops (`delete`, bulk `move`) require explicit user confirmation.
 - The helper never deletes permanently unless asked; Obsidian trash is used in
@@ -196,7 +221,7 @@ When the helper reports `fs` mode:
 - Keep frontmatter valid YAML. Use the helper (`new`, `promote`) or
   `property:set` rather than hand editing when possible.
 
-## 9. Out of scope (this version)
+## 10. Out of scope (this version)
 
 - Vector / semantic search: deferred. The architecture reserves a slot; see
   `docs/DEVELOPMENT.md`. For now use full text `search` plus tags and backlinks.

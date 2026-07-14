@@ -1,0 +1,135 @@
+# SDD-RIPER process record
+
+This is the spec-driven process record for MemoVault. SDD = Spec-Driven
+Development. RIPER = the five phases every change moves through: Research,
+Innovate, Plan, Execute, Review.
+
+It is both the methodology charter and the running log of decisions.
+
+## 1. The workflow
+
+```
+Research  ->  Innovate  ->  Plan  ->  Execute  ->  Review
+  read only    compare       spec        implement    verify
+               options       (approved)  exactly      vs plan
+```
+
+Phase rules:
+- **Research**: read code, docs, external facts. No edits. Ask when uncertain.
+- **Innovate**: enumerate design alternatives and tradeoffs. No edits.
+- **Plan**: produce a concrete spec (files, names, behavior). Must be approved by
+  the user before any write. This is the "Spec" in SDD.
+- **Execute**: implement exactly the approved plan. No scope creep.
+- **Review**: verify against the plan, the naming contract (`AGENTS.md` section
+  2), and the no-emoji rule.
+
+Hard rules:
+- Research/Innovate/Plan are read only. Execution without an approved plan is a
+  violation.
+- Open questions go to the user; the agent does not decide them autonomously.
+- Every phase's output is recorded below as an entry.
+
+## 2. Entry template
+
+Append a new entry per change:
+
+```
+### YYYY-MM-DD - <short title>
+- Research: <what was read, key facts>
+- Innovate: <options considered, tradeoffs>
+- Plan: <approved spec: files, names, behavior>
+- Execute: <what was written, files touched>
+- Review: <verification result, deviations>
+```
+
+## 3. Foundational entry: project creation (2026-07-13)
+
+### Research
+- Read existing skills in `~/.agents/skills/` (lark-*, byted-ark-seedream) to
+  learn the SKILL.md convention: YAML frontmatter (`name`, `version`,
+  `description`), optional `references/` and `scripts/`, `package.json`,
+  `INSTALL.md`.
+- Pulled the official Obsidian CLI reference from
+  `help.obsidian.md/Extending Obsidian/Obsidian CLI.md` (saved locally as
+  `/tmp/obsidian-cli-reference.md`, 1534 lines). Key facts:
+  - The CLI is bundled with the Obsidian desktop app (installer 1.12.7+), not an
+    npm package.
+  - The Obsidian app must be running; the CLI connects to the live instance.
+  - A vault is identified by being registered in Obsidian; the CLI selects by
+    active vault, `vault=<name|id>`, or cwd.
+  - Rich surface: create/read/append/prepend/move/rename/delete, daily:*,
+    search/search:context, tags/tag, properties/property:set, backlinks/links/
+    unresolved/orphans/deadends, tasks, templates, vault/vaults.
+- Inspected the local machine:
+  - Obsidian 1.12.4 installed (below the 1.12.7 CLI requirement).
+  - `obsidian-cli` binary absent from the app bundle; `/usr/local/bin/obsidian`
+    not registered.
+  - An existing personal vault is registered at
+    `~/Library/CloudStorage/OneDrive-Personal/Notes.md`.
+  - Vault registry file: `~/Library/Application Support/obsidian/obsidian.json`
+    with shape `{"vaults":{<id>:{path,ts,open}}, "cli":bool}`.
+
+### Innovate
+- Dependency model: (a) depend on a third party npm CLI, (b) official Obsidian
+  CLI, (c) self contained bash only. Chose (b) per the user, with (c) as the
+  fallback layer (hybrid).
+- Runtime mode: require app running vs hybrid fallback. Chose hybrid so capture
+  still works when Obsidian is closed.
+- Vector search: build now vs defer. Chose defer (Phase 2); v1 = full text +
+  tags + backlinks, all native to the CLI.
+- Vault identity: arbitrary path vs Obsidian registered vault. Reconciled by
+  resolving `$AGENT_MEMO_VAULT` as a path and ensuring the installer registers
+  that folder as an Obsidian vault named `agent-memo-vault`; the helper `cd`s
+  into it so the CLI selects it by cwd.
+- Naming: keep `obsidian-brain` vs cohesive `agent-memo-vault` stem. Chose
+  `agent-memo-vault` to avoid leaking the implementation and to stay cohesive
+  with the skill name.
+- Classification: domain folders + heat tiers. Heat uses text tiers
+  (`seedling`/`growing`/`evergreen`) because of the no-emoji constraint.
+
+### Plan (approved)
+- Naming contract as in `AGENTS.md` section 2.
+- Repo layout as in `AGENTS.md` section 3.
+- Skill surface: `preflight`, `new`, `append`, `prepend`, `read`, `daily`,
+  `search`, `tags`, `by-tag`, `backlinks`, `links`, `orphans`, `unresolved`,
+  `move`, `rename`, `promote`, `moc`, `by-heat`.
+- Hybrid implementation: `lib/cli.sh` (official CLI) and `lib/fs.sh` (pure fs)
+  behind one dispatcher.
+- Installer: copy skill to `~/.agent-memo-vault-skill/`, scaffold vault at
+  `~/.agent-memo-vault/`, optionally register vault into `obsidian.json`, and
+  inject pointer stubs into each target agent's rules location.
+- Supported agents: claude, codex, opencode, cline, cursor, crush, gemini,
+  copilot, trae, pi.
+- Vector search explicitly out of scope for v0.1.
+
+### Execute
+- Wrote `AGENTS.md`, `CLAUDE.md`, `README.md`, `SKILL.md`, `VERSION`.
+- Wrote `docs/`: ARCHITECTURE, CLASSIFICATION, CLI-REFERENCE, DEVELOPMENT,
+  RIPER, INSTALL.
+- Wrote `scripts/memovault.sh`, `scripts/lib/cli.sh`, `scripts/lib/fs.sh`,
+  `scripts/lib/classify.sh`.
+- Wrote `install/install.sh`, `install/targets.sh`,
+  `install/adapters/<agent>.{md,mdc}` for all supported agents.
+- Wrote `templates/note.md`, `templates/daily.md`, `templates/moc.md`.
+
+### Review
+Self-tested against bash 3.2.57 with a throwaway vault. Findings and fixes:
+
+- Caught and fixed a parse error: a `case` pattern with a `[...]` glob class
+  before a space (`*[Nn]ot found*)`) is rejected by bash 3.2. Replaced with a
+  lowercased value and a quoted literal (`*"not found"*`). Documented the rule
+  in `DEVELOPMENT.md`.
+- Fixed false cli mode: on this host `obsidian` resolves to the GUI app binary
+  (Obsidian 1.12.4, below the 1.12.7 CLI requirement), which exits 0 with
+  `Vault not found.` Detection now does a functional probe (`obsidian version`,
+  backgrounded with a manual timeout, output validated) instead of trusting
+  binary presence plus a running app.
+- Fixed path traversal: `mmfs_move` validated with a string prefix match, so
+  `$VAULT/../escape` passed. Now rejects any `..` path segment and re-checks
+  the canonicalized destination.
+- Verified round trips in fs mode: new/read/append/prepend/search/tags/backlinks/
+  links/orphans/unresolved/promote (seedling->growing->evergreen)/moc/by-heat/
+  daily:append, plus move/rename within `brain/`.
+- Verified installer `--dry-run` renders stubs and resolves placeholders for
+  every supported agent.
+- Naming contract (`AGENTS.md` section 2) upheld; no emoji in any file.

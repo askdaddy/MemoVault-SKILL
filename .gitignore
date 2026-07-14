@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+
+# Editor-local state
+.vscode/
+
+# Backups produced by the installer (e.g. obsidian.json.bak.*)
+*.bak
+*.bak.*
+
+# Local scratch (never committed)
+/scratch/

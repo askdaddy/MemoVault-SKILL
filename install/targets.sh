@@ -23,7 +23,7 @@ mm_target_path() {
     gemini)  printf '%s/.gemini/GEMINI.md' "$HOME" ;;
     cline)   printf '%s/.cline/rules/memovault.md' "$HOME" ;;
     cursor)  printf '%s/.cursor/rules/memovault.mdc' "$HOME" ;;
-    trae)    printf '%s/.trae/rules/memovault.md' "$HOME" ;;
+    trae)    printf '%s/.trae/rules/memovault.md' "$HOME" ;;   # not read by Trae; use `--agent trae --stdout` and paste into Settings -> AI Rules
     copilot) printf '%s/.config/github-copilot/instructions.md' "$HOME" ;;
     *) return 1 ;;
   esac

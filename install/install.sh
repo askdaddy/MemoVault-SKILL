@@ -16,6 +16,7 @@ HELPER="$SOURCE/scripts/memovault.sh"
 DRY_RUN=0
 FORCE=0
 INLINE=0
+STDOUT_MODE=0
 DO_REGISTER=0
 DO_SOURCE_ONLY=0
 AGENTS=""
@@ -43,6 +44,8 @@ Options:
   --inline           embed the full SKILL.md instead of a pointer stub
   --force            overwrite existing stub files
   --dry-run          print actions without writing
+  --stdout           print the rendered body for an agent (for UI-only targets
+                     such as Trae global AI Rules); requires --agent <name>
   -h | --help        show this help
 
 Supported agents: claude, pi, codex, opencode, crush, gemini, cline, cursor,
@@ -218,12 +221,25 @@ while [ $# -gt 0 ]; do
     --inline) INLINE=1; shift ;;
     --force) FORCE=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
+    --stdout) STDOUT_MODE=1; shift ;;
     -h|--help) mm_usage; exit 0 ;;
     *) mm_die "unknown flag: $1 (try --help)" ;;
   esac
 done
 
 HELPER="$SOURCE/scripts/memovault.sh"
+
+# Render-only mode: print the composed body for an agent and exit. Used for
+# UI-only targets (e.g. Trae global AI Rules) where there is no file to write.
+if [ "$STDOUT_MODE" = 1 ]; then
+  [ -n "$AGENTS" ] || mm_die "--stdout requires --agent <name>"
+  for a in $AGENTS; do
+    mm_target_kind "$a" >/dev/null || mm_die "unknown agent: $a"
+    mm_compose "$(mm_target_adapter "$a")"
+    printf '\n--- (end of %s) ---\n\n' "$a"
+  done
+  exit 0
+fi
 
 if [ -z "$AGENTS" ] && [ "$DO_SOURCE_ONLY" = 0 ] && [ "$DO_REGISTER" = 0 ]; then
   mm_usage

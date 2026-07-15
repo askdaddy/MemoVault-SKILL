@@ -59,6 +59,8 @@ Flags:
 - `--inline`: embed the full `SKILL.md` in each adapter instead of a pointer.
 - `--force`: overwrite existing files.
 - `--dry-run`: print actions only.
+- `--stdout`: print the rendered body for one agent (for UI-only targets such as
+  Trae global AI Rules) instead of writing a file; requires `--agent <name>`.
 
 ## 4. Environment
 
@@ -91,13 +93,17 @@ Default install locations (personal/global). Override per agent by editing
 | gemini | agents | append block to `~/.gemini/GEMINI.md` |
 | cline | rules | `~/.cline/rules/memovault.md` |
 | cursor | rules | `~/.cursor/rules/memovault.mdc` |
-| trae | rules | `~/.trae/rules/memovault.md` |
+| trae | stdout | paste `install.sh --agent trae --stdout` into Trae Settings -> AI Rules (no global file) |
 | copilot | rules | `~/.config/github-copilot/instructions.md` (append block) |
 
 Notes on uncertainty:
-- `cline`, `trae`, `crush`, `copilot` global paths vary by version. The installer
-  creates missing parent directories. If your tool reads a different path, set it
-  in `targets.sh` and re-run.
+- `cline`, `crush`, `copilot` global paths vary by version. The installer creates
+  missing parent directories. If your tool reads a different path, set it in
+  `targets.sh` and re-run.
+- Trae has no global rules file. For global coverage, run
+  `install.sh --agent trae --stdout` and paste the output into Trae Settings ->
+  AI Rules. For project coverage, drop the same content as
+  `<project>/.trae/skills/memovault/SKILL.md`.
 - For project-scoped agents (Copilot repo instructions, Cursor project rules),
   prefer running `install.sh` inside that repo with the project path.
 

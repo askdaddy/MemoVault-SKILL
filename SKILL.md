@@ -1,6 +1,6 @@
 ---
 name: memovault
-version: 0.1.0
+version: 0.2.0
 description: "Sink knowledge into a local Obsidian vault with bash. Use when the user wants to capture, save, record, or sink knowledge, notes, learnings, decisions, meeting takeaways, code snippets, or research into their memo vault / second brain / Obsidian knowledge base; or to create, edit, link, search, classify by domain, promote by heat, or maintain backlinks and daily notes. Trigger phrases: 记到笔记 / 沉淀 / 存到 vault / 知识库 / second brain / 备忘录 / 笔记里记一下 / 双链 / 回链 / 按领域归档 / 提升热度 / daily note / save to vault / memo it / link this note."
 ---
 
@@ -24,7 +24,7 @@ directories are pointer stubs that redirect here.
 ## 1. Resolve the vault and the helper
 
 The skill ships a helper script. After install it lives at
-`~/.agent-memo-vault-skill/scripts/memovault.sh`. In this repo it is at
+`~/.agents/skills/memovault/scripts/memovault.sh`. In this repo it is at
 `scripts/memovault.sh`.
 
 ```bash
@@ -32,7 +32,7 @@ The skill ships a helper script. After install it lives at
 export AGENT_MEMO_VAULT="${AGENT_MEMO_VAULT:-$HOME/.agent-memo-vault}"
 
 # Helper location (repo during development, home after install)
-MM="$HOME/.agent-memo-vault-skill/scripts/memovault.sh"
+MM="$HOME/.agents/skills/memovault/scripts/memovault.sh"
 [ -x "$MM" ] || MM="./scripts/memovault.sh"   # fall back to repo copy
 ```
 

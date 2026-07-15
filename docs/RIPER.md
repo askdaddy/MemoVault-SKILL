@@ -174,3 +174,43 @@ Self-tested against bash 3.2.57 with a throwaway vault. Findings and fixes:
 - opencode `~/.config/opencode/AGENTS.md` now carries the full protocol block
   (idempotent markers intact, CodeGraph block untouched).
 - No emoji in any changed file.
+
+## 5. Entry: self-contained skill under ~/.agents/skills/ (2026-07-15)
+
+### Research
+- User enabled Trae's "`.agents` skills directory" setting. Confirmed
+  `~/.agents/skills/` is this machine's shared skills dir (28 skills, each a
+  self-contained `<name>/SKILL.md` folder; pi and the npx-skills ecosystem read
+  it). Trae scans this directory; `.skill-lock.json` is another manager's
+  registry and is not consulted for discovery.
+
+### Innovate
+- Two-location model (source at `~/.agent-memo-vault-skill/` + per-agent copies)
+  vs single self-contained folder under `~/.agents/skills/memovault/`. Chose the
+  latter: it is the idiom (matches byted-ark / lark skills), removes an
+  indirection, and is auto-discovered by pi/Trae.
+
+### Plan (approved)
+- Canonical skill home becomes `~/.agents/skills/memovault/` (SKILL.md + scripts
+  + templates + docs). Drop `~/.agent-memo-vault-skill/`.
+- `pi` and `trae` become `native` kind: `--agent pi`/`--agent trae` just installs
+  the source here (auto-discovered); no stub. Other agents keep pointer
+  stubs/blocks that now reference `~/.agents/skills/memovault/SKILL.md`.
+- Vault data `~/.agent-memo-vault/` and env `AGENT_MEMO_VAULT` unchanged.
+- Bump version 0.1.0 -> 0.2.0.
+
+### Execute
+- Bulk path replace `.agent-memo-vault-skill` -> `.agents/skills/memovault` in
+  README, SKILL, AGENTS, INSTALL, install.sh (RIPER historical entries left
+  intact).
+- install.sh: added `native` kind branch in `mm_inject_one`.
+- targets.sh: `pi|trae` -> native; merged path; removed the bogus `~/.trae/rules`
+  entry.
+- docs/INSTALL.md: table + notes updated for native pi/trae and the skills home.
+- Version bumped to 0.2.0.
+
+### Review
+- `bash -n` passes; `--dry-run --all` shows native (pi/trae) and stubs (others).
+- Migrated the live machine: reinstalled source to the new path, re-injected
+  opencode (`--force`) to repoint its block, removed the old source dir.
+- preflight and search verified from the new helper path.

@@ -9,7 +9,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 . "$HERE/targets.sh"
 
-SOURCE="${MEMOVAULT_SOURCE:-$HOME/.agent-memo-vault-skill}"
+SOURCE="${MEMOVAULT_SOURCE:-$HOME/.agents/skills/memovault}"
 VAULT="${AGENT_MEMO_VAULT:-$HOME/.agent-memo-vault}"
 HELPER="$SOURCE/scripts/memovault.sh"
 
@@ -35,7 +35,7 @@ Usage:
              (--agent <name> ... | --all)
 
 Options:
-  --source <dir>     skill source dir (default ~/.agent-memo-vault-skill)
+  --source <dir>     skill source dir (default ~/.agents/skills/memovault)
   --vault <dir>      knowledge vault dir (default ~/.agent-memo-vault)
   --source-only      only install the source + scaffold the vault
   --register-vault   register the vault into Obsidian's obsidian.json
@@ -124,6 +124,11 @@ mm_inject_one() {
     else
       mm_compose "$adapter" | sed 's/^/   | /'
     fi
+    return 0
+  fi
+
+  if [ "$kind" = native ]; then
+    mm_note "   native: self-contained skill auto-discovered at $SOURCE"
     return 0
   fi
 

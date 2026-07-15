@@ -19,7 +19,7 @@ operations when it is not.
 - Skill name: `memovault`
 - Knowledge vault (Obsidian vault): `~/.agent-memo-vault/`
 - Vault path override env var: `AGENT_MEMO_VAULT` (default `~/.agent-memo-vault`)
-- Canonical skill source after install: `~/.agent-memo-vault-skill/`
+- Canonical skill source after install: `~/.agents/skills/memovault/`
 - Heat tiers (no symbols): `seedling`, `growing`, `evergreen`
 
 ## 2. Naming contract (do not deviate)
@@ -28,7 +28,7 @@ operations when it is not.
 |---|---|
 | Skill name / `name` field | `memovault` |
 | Agent skill subdirectory | `memovault/` |
-| Skill source dir (home) | `~/.agent-memo-vault-skill/` |
+| Skill source dir (home) | `~/.agents/skills/memovault/` |
 | Knowledge vault dir | `~/.agent-memo-vault/` |
 | Env var (vault path) | `AGENT_MEMO_VAULT` |
 | Obsidian registered vault name | `agent-memo-vault` |

@@ -6,7 +6,7 @@ Obsidian CLI (https://obsidian.md/cli) when the desktop app is running, and degr
 gracefully to plain filesystem operations when it is not.
 
 - Skill name: `memovault`
-- Canonical skill source (after install): `~/.agent-memo-vault-skill/`
+- Canonical skill source (after install): `~/.agents/skills/memovault/`
 - Knowledge vault (Obsidian vault, data): `~/.agent-memo-vault/`
 - Vault path override env var: `AGENT_MEMO_VAULT` (default `~/.agent-memo-vault`)
 - Heat tiers: `seedling` / `growing` / `evergreen`

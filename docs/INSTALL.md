@@ -13,7 +13,7 @@ one or more coding agents.
 
 ## 2. Concepts
 
-- **Skill source** = `~/.agent-memo-vault-skill/`. The authoritative copy of the
+- **Skill source** = `~/.agents/skills/memovault/`. The authoritative copy of the
   skill that the helper and the docs live in.
 - **Knowledge vault** = `~/.agent-memo-vault/`. The Obsidian vault where notes
   are written. Override with `AGENT_MEMO_VAULT`.
@@ -66,7 +66,7 @@ Flags:
 
 `scripts/memovault.sh` defaults `AGENT_MEMO_VAULT` to `~/.agent-memo-vault`, so no
 global export is required. To make the override permanent for your shell, the
-installer writes `~/.agent-memo-vault-skill/env.sh`:
+installer writes `~/.agents/skills/memovault/env.sh`:
 
 ```bash
 export AGENT_MEMO_VAULT="${AGENT_MEMO_VAULT:-$HOME/.agent-memo-vault}"
@@ -75,7 +75,7 @@ export AGENT_MEMO_VAULT="${AGENT_MEMO_VAULT:-$HOME/.agent-memo-vault}"
 Source it from your shell rc if you change the default:
 
 ```bash
-echo 'source "$HOME/.agent-memo-vault-skill/env.sh"' >> ~/.zshrc
+echo 'source "$HOME/.agents/skills/memovault/env.sh"' >> ~/.zshrc
 ```
 
 ## 5. Supported agents and locations
@@ -86,34 +86,37 @@ Default install locations (personal/global). Override per agent by editing
 | Agent | Kind | Default location |
 |---|---|---|
 | claude | skill | `~/.claude/skills/memovault/SKILL.md` |
-| pi | skill | `~/.agents/skills/memovault/SKILL.md` |
+| pi | native | `~/.agents/skills/memovault/` (self-contained; auto-discovered) |
 | codex | agents | append block to `~/.codex/AGENTS.md` |
 | opencode | agents | append block to `~/.config/opencode/AGENTS.md` |
 | crush | agents | append block to `~/.config/crush/AGENTS.md` |
 | gemini | agents | append block to `~/.gemini/GEMINI.md` |
 | cline | rules | `~/.cline/rules/memovault.md` |
 | cursor | rules | `~/.cursor/rules/memovault.mdc` |
-| trae | stdout | paste `install.sh --agent trae --stdout` into Trae Settings -> AI Rules (no global file) |
+| trae | native / stdout | `~/.agents/skills/memovault/` (skills dir, if enabled) or paste `install.sh --agent trae --stdout` into Trae Settings -> AI Rules |
 | copilot | rules | `~/.config/github-copilot/instructions.md` (append block) |
 
-Notes on uncertainty:
+- The canonical skill home is `~/.agents/skills/memovault/` (self-contained:
+  SKILL.md + scripts + templates + docs). `pi` and `trae` are `native`: they read
+  this folder directly, so `--agent pi` / `--agent trae` just (re)install the
+  source here. Every other agent gets a pointer stub/rules block that references
+  this folder.
 - `cline`, `crush`, `copilot` global paths vary by version. The installer creates
   missing parent directories. If your tool reads a different path, set it in
   `targets.sh` and re-run.
-- Trae has no global rules file. For global coverage, run
-  `install.sh --agent trae --stdout` and paste the output into Trae Settings ->
-  AI Rules. For project coverage, drop the same content as
-  `<project>/.trae/skills/memovault/SKILL.md`.
+- Trae can use the shared skills directory (enable "`.agents` skills directory"
+  in Trae Settings) for auto-discovery, or `install.sh --agent trae --stdout`
+  pasted into Trae Settings -> AI Rules for always-on global rules.
 - For project-scoped agents (Copilot repo instructions, Cursor project rules),
   prefer running `install.sh` inside that repo with the project path.
 
 ## 6. Verify
 
 ```bash
-~/.agent-memo-vault-skill/scripts/memovault.sh preflight
-~/.agent-memo-vault-skill/scripts/memovault.sh new engineering "Test Note" --body "hello"
-~/.agent-memo-vault-skill/scripts/memovault.sh read "Test Note"
-~/.agent-memo-vault-skill/scripts/memovault.sh search "hello"
+~/.agents/skills/memovault/scripts/memovault.sh preflight
+~/.agents/skills/memovault/scripts/memovault.sh new engineering "Test Note" --body "hello"
+~/.agents/skills/memovault/scripts/memovault.sh read "Test Note"
+~/.agents/skills/memovault/scripts/memovault.sh search "hello"
 ```
 
 Restart your agent after injection so it reloads skills/rules.
@@ -121,6 +124,6 @@ Restart your agent after injection so it reloads skills/rules.
 ## 7. Uninstall
 
 Remove the injected stub files listed by `--dry-run`, delete
-`~/.agent-memo-vault-skill/`, and (optionally) remove the `agent-memo-vault`
+`~/.agents/skills/memovault/`, and (optionally) remove the `agent-memo-vault`
 entry from `obsidian.json`. The vault `~/.agent-memo-vault/` is your data; the
 installer never deletes it.

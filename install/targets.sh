@@ -3,6 +3,8 @@
 # Sourced by install.sh. Bash 3.2 compatible (no associative arrays).
 #
 # kind:
+#   native - self-contained skill folder under the shared ~/.agents/skills/
+#            (auto-discovered by pi, Trae, and the npx-skills ecosystem); no stub
 #   skill  - drop a SKILL.md (with frontmatter) into an agent skills directory
 #   rules  - drop a rules file into an agent rules directory
 #   agents - append an instruction block to an AGENTS.md / GEMINI.md style file
@@ -16,24 +18,24 @@ mm_target_list() {
 mm_target_path() {
   case "$1" in
     claude)  printf '%s/.claude/skills/memovault/SKILL.md' "$HOME" ;;
-    pi)      printf '%s/.agents/skills/memovault/SKILL.md' "$HOME" ;;
+    pi|trae) printf '%s/.agents/skills/memovault' "$HOME" ;;
     codex)   printf '%s/.codex/AGENTS.md' "$HOME" ;;
     opencode) printf '%s/.config/opencode/AGENTS.md' "$HOME" ;;
     crush)   printf '%s/.config/crush/AGENTS.md' "$HOME" ;;
     gemini)  printf '%s/.gemini/GEMINI.md' "$HOME" ;;
     cline)   printf '%s/.cline/rules/memovault.md' "$HOME" ;;
     cursor)  printf '%s/.cursor/rules/memovault.mdc' "$HOME" ;;
-    trae)    printf '%s/.trae/rules/memovault.md' "$HOME" ;;   # not read by Trae; use `--agent trae --stdout` and paste into Settings -> AI Rules
     copilot) printf '%s/.config/github-copilot/instructions.md' "$HOME" ;;
     *) return 1 ;;
   esac
 }
 
-# Echo the kind for an agent: skill | rules | agents.
+# Echo the kind for an agent: native | skill | rules | agents.
 mm_target_kind() {
   case "$1" in
-    claude|pi) printf 'skill' ;;
-    cline|cursor|trae) printf 'rules' ;;
+    pi|trae) printf 'native' ;;
+    claude) printf 'skill' ;;
+    cline|cursor) printf 'rules' ;;
     codex|opencode|crush|gemini|copilot) printf 'agents' ;;
     *) return 1 ;;
   esac

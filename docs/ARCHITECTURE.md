@@ -65,21 +65,28 @@ Rules:
 `preflight` returns a single machine readable line plus a human summary:
 
 ```
-mode=cli vault=/Users/me/.agent-memo-vault bin=/usr/local/bin/obsidian app=running
-mode=fs  vault=/Users/me/.agent-memo-vault bin= app=stopped
+mode=cli vault=/Users/me/.agent-memo-vault bin=/usr/local/bin/obsidian app=running forced=0
+mode=fs  vault=/Users/me/.agent-memo-vault bin= app=stopped forced=0
+mode=fs  vault=/Users/me/.agent-memo-vault bin= app=stopped forced=1
 ```
 
 Detection order:
-1. `bin` = first existing of: `command -v obsidian`,
+1. If `MM_FORCE_FS=1`, short-circuit: `mode=fs`, `forced=1`, no probe runs.
+   The Obsidian binary is not located and the app is not probed, so the GUI is
+   never launched. This is the headless path.
+2. `bin` = first existing of: `command -v obsidian`,
    `/usr/local/bin/obsidian`, `~/.local/bin/obsidian`,
    `/Applications/Obsidian.app/Contents/MacOS/obsidian-cli`.
-2. `app` = running if a process named `Obsidian` (macOS) or `obsidian` (Linux)
+3. `app` = running if a process named `Obsidian` (macOS) or `obsidian` (Linux)
   is alive (`pgrep`).
-3. `mode` = `cli` when both `bin` and `app` are present, else `fs`.
+4. `mode` = `cli` when both `bin` and `app` are present and the functional
+   probe (`obsidian version`, backgrounded with a timeout) succeeds, else `fs`.
 
 Caveat: invoking the CLI when the app is stopped may launch the app and block.
 `preflight` therefore probes the process, not the binary, before declaring
-`cli` mode.
+`cli` mode. When this side effect is itself undesirable (e.g. the `obsidian`
+binary on PATH is actually the GUI app, or the agent must not open windows), set
+`MM_FORCE_FS=1` to skip the probe entirely.
 
 ## 5. Operation mapping
 
@@ -129,7 +136,41 @@ filesystem. The resulting file is identical in structure.
   surface in v0.1; removal goes through Obsidian trash in `cli` mode and is not
   exposed in `fs` mode.
 
-## 9. Extension points
+## 9. Upgrade flow (self-update)
+
+The skill can update itself from its dev repo without a remote registry. The
+upgrade re-syncs the skill source under `~/.agents/skills/memovault/` from the
+dev repo and re-injects every agent stub. Vault data (`$AGENT_MEMO_VAULT`) is
+never touched.
+
+### Version source resolution
+
+The "dev repo" is the authoritative copy of the skill (this repository). It is
+resolved, in priority order:
+
+1. `MEMOVAULT_DEV_REPO` env var if set.
+2. `.source-origin`, a one-line file written into the source dir at install time
+   (`mm_install_source` records the repo root it copied from).
+3. The repository the installer is running from, as a last resort.
+
+The installed `VERSION` is compared to the dev repo `VERSION` with `mm_vercmp`
+(semantic, dot-separated). If the dev repo is newer, `preflight` prints an
+`update-available <installed> <dev>` hint; `upgrade` performs the re-sync.
+
+### Flow
+
+1. Resolve the dev repo (above).
+2. Compare versions; if the dev repo is newer (or `--force`), proceed.
+3. If the dev repo is a git repo, run `git pull --ff-only` (skippable with
+   `--no-pull`). Git is optional; on failure the installer continues with the
+   local files.
+4. Re-run `mm_install_source` + `mm_scaffold_vault` + `mm_write_env` + agent
+   injection with `FORCE=1`. Idempotent and safe to re-run.
+
+The helper's `upgrade` subcommand simply `exec`s `install.sh --upgrade`, so the
+installer is the single code path for both fresh install and upgrade.
+
+## 10. Extension points
 
 - Vector search: a new `lib/vec.sh` plus a `search:vector` subcommand, behind the
   same dispatch. See `DEVELOPMENT.md`.

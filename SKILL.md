@@ -1,7 +1,7 @@
 ---
 name: memovault
-version: 0.2.0
-description: "Sink knowledge into a local Obsidian vault with bash. Use when the user wants to capture, save, record, or sink knowledge, notes, learnings, decisions, meeting takeaways, code snippets, or research into their memo vault / second brain / Obsidian knowledge base; or to create, edit, link, search, classify by domain, promote by heat, or maintain backlinks and daily notes. Trigger phrases: 记到笔记 / 沉淀 / 存到 vault / 知识库 / second brain / 备忘录 / 笔记里记一下 / 双链 / 回链 / 按领域归档 / 提升热度 / daily note / save to vault / memo it / link this note."
+version: 0.3.0
+description: "Sink knowledge into a local Obsidian vault with bash. Use when the user wants to capture, save, record, or sink knowledge, notes, learnings, decisions, meeting takeaways, code snippets, or research into their memo vault / second brain / Obsidian knowledge base; or to create, edit, link, search, classify by domain, promote by heat, or maintain backlinks and daily notes. Trigger phrases: 记到笔记 / 记一下 / 笔记里记一下 / 沉淀 / 沉淀一下 / 存到 vault / 存一下 / 存档 / 存到知识库 / 知识库 / 备忘录 / 双链 / 回链 / 按领域归档 / 提升热度 / 日记 / 每日笔记 / remember this / save this / save to vault / save to notes / memo it / note this / capture this / second brain / knowledge base / daily note / backlinks / link this note."
 ---
 
 # MemoVault
@@ -31,6 +31,10 @@ The skill ships a helper script. After install it lives at
 # Vault path (override per user; default below)
 export AGENT_MEMO_VAULT="${AGENT_MEMO_VAULT:-$HOME/.agent-memo-vault}"
 
+# Force fs mode: skip the Obsidian CLI probe entirely so the GUI never launches.
+# Set to 1 for silent/headless runs, or when the CLI binary is absent.
+export MM_FORCE_FS="${MM_FORCE_FS:-0}"
+
 # Helper location (repo during development, home after install)
 MM="$HOME/.agents/skills/memovault/scripts/memovault.sh"
 [ -x "$MM" ] || MM="./scripts/memovault.sh"   # fall back to repo copy
@@ -45,8 +49,8 @@ Everything below assumes `$MM` points at the helper and `$AGENT_MEMO_VAULT` is s
 ```
 
 Output reports: resolved vault path, whether the `obsidian` binary exists, whether
-the Obsidian app is running, and the active mode (`cli` or `fs`). Use the reported
-mode to set expectations:
+the Obsidian app is running, the active mode (`cli` or `fs`), and whether fs mode
+was forced. Use the reported mode to set expectations:
 
 - `cli` mode: backlinks, link safe move/rename, tags, properties, and search are
   native and authoritative.
@@ -57,6 +61,30 @@ mode to set expectations:
 If `cli` mode is unavailable and the user wants link graph features, tell them to
 start Obsidian (and, once, enable Settings -> General -> Command line interface on
 Obsidian 1.12.7 or newer).
+
+To run fully headless (never launch the Obsidian GUI), set `MM_FORCE_FS=1` before
+calling the helper. The probe is skipped entirely and `preflight` reports
+`forced=1`. This is the recommended setting when the CLI binary is absent or when
+the agent must not open windows.
+
+### Update and upgrade
+
+`preflight` also checks for skill updates: it compares the installed `VERSION`
+against the dev repo's `VERSION` (auto-detected from `.source-origin`, or set
+`MEMOVAULT_DEV_REPO`). If the dev repo is newer, a hint line reads
+`hint: update-available <installed> <dev> (run: memovault upgrade)`. Run the
+upgrade to re-sync the skill source from the dev repo and re-inject every agent
+stub:
+
+```bash
+"$MM" upgrade            # re-sync source + re-inject agents
+"$MM" upgrade --no-pull  # skip the `git pull` step in the dev repo
+```
+
+The upgrade delegates to `install.sh --upgrade`. It is idempotent and safe to
+re-run. If the dev repo is a git repo it pulls first (`--ff-only`); pass
+`--no-pull` to skip that. The vault data (`$AGENT_MEMO_VAULT`) is never touched
+by upgrade.
 
 ## 3. Classification scheme (follow exactly)
 
@@ -185,7 +213,9 @@ design rationale, or non-obvious fact):
 1. Propose first: "I can save this to <domain>/<title>, linking [[related]]. Do it?"
 2. On confirmation: `new <domain> "<title>" --tags ... --body "..."`, then add
    `[[wikilinks]]` and short `aliases`. New notes start `heat: seedling`.
-3. If the user explicitly says "remember this" / "记一下" / "沉淀一下", capture
+3. If the user explicitly says "remember this" / "save this" / "note this" /
+   "capture this" / "记一下" / "记下来" / "帮我记一下" / "沉淀一下" /
+   "存一下" / "存到笔记" / "记到知识库", capture
    immediately, then confirm what you saved.
 4. Do not capture small talk, transient debug output, or anything not worth
    searching for later.
@@ -212,6 +242,13 @@ When the helper reports `fs` mode:
 - `move`/`rename` move the file only; existing `[[links]]` may break. Warn the
   user and offer to run a follow up `search` to fix stale links when `cli` mode
   returns.
+
+fs mode can be forced with `MM_FORCE_FS=1` (see section 1). Forced mode skips the
+CLI probe entirely, so the Obsidian GUI is never launched. This is the
+recommended way to run the skill on hosts where the CLI binary is absent or where
+opening a window is undesirable. The tradeoff is that link graph features stay
+approximated even if Obsidian is later started; unset `MM_FORCE_FS` and re-run
+`preflight` to re-detect `cli` mode.
 
 ## 9. Safety
 

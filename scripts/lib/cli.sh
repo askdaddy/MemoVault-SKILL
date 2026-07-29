@@ -58,9 +58,21 @@ mmcli_probe_ok() {
   return 0
 }
 
-# Detect runtime mode. Sets globals: MM_OBSIDIAN, MM_APP_RUNNING, MM_MODE.
+# Detect runtime mode. Sets globals: MM_OBSIDIAN, MM_APP_RUNNING, MM_MODE,
+# MM_FORCED.
 # cli mode requires: a binary, the app running, AND a functional probe success.
+# MM_FORCE_FS=1 short-circuits to fs mode without probing the CLI, so the
+# Obsidian GUI is never launched. Useful when the CLI binary is absent or when
+# the user wants a silent, headless run.
 mmcli_detect() {
+  MM_FORCED=0
+  if [ "${MM_FORCE_FS:-0}" = 1 ]; then
+    MM_OBSIDIAN=""
+    MM_APP_RUNNING=0
+    MM_MODE=fs
+    MM_FORCED=1
+    return 0
+  fi
   MM_OBSIDIAN="$(mmcli_bin)"
   if mmcli_app_running; then MM_APP_RUNNING=1; else MM_APP_RUNNING=0; fi
   if [ -n "$MM_OBSIDIAN" ] && [ "$MM_APP_RUNNING" = 1 ] && mmcli_probe_ok; then

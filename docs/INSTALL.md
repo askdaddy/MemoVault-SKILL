@@ -40,6 +40,9 @@ Run from the repository root.
 # Preview without writing
 ./install/install.sh --agent cursor --dry-run
 
+# Check source + always-on injection (no writes; exit 1 if incomplete)
+./install/install.sh --verify
+
 # Use a non default vault location
 ./install/install.sh --agent claude --vault ~/MyVault
 
@@ -59,6 +62,8 @@ Flags:
 - `--inline`: embed the full `SKILL.md` in each adapter instead of a pointer.
 - `--force`: overwrite existing files.
 - `--dry-run`: print actions only.
+- `--verify`: read-only check of skill source, vault scaffold, and always-on
+  agent injections. Optional `--agent` to limit scope. Exit 1 on failure.
 - `--stdout`: print the rendered body for one agent (for UI-only targets such as
   Trae global AI Rules) instead of writing a file; requires `--agent <name>`.
 
@@ -112,6 +117,24 @@ Default install locations (personal/global). Override per agent by editing
 
 ## 6. Verify
 
+Seeing `~/.agents/skills/memovault/` on disk is not enough for always-on
+recall/capture. Cursor, Claude, and most other agents need their adapter
+injection (rules / skill stub / AGENTS.md block). Check that first:
+
+```bash
+./install/install.sh --verify
+./install/install.sh --verify --agent cursor   # one agent
+```
+
+`--verify` exits non-zero if the skill source, vault scaffold, or any checked
+agent's Memory protocol injection is missing. Fix with:
+
+```bash
+./install/install.sh --all --force
+```
+
+Then smoke-test the helper:
+
 ```bash
 ~/.agents/skills/memovault/scripts/memovault.sh preflight
 ~/.agents/skills/memovault/scripts/memovault.sh new engineering "Test Note" --body "hello"
@@ -121,7 +144,42 @@ Default install locations (personal/global). Override per agent by editing
 
 Restart your agent after injection so it reloads skills/rules.
 
-## 7. Uninstall
+## 7. Upgrade
+
+An already-installed skill can be re-synced from its dev repo. The dev repo is
+the source of truth; there is no remote registry. It is auto-detected from
+`.source-origin` (written at install time), or set explicitly:
+
+```bash
+export MEMOVAULT_DEV_REPO="$HOME/Workspace/MemoVault-SKILL"
+```
+
+From anywhere (delegates to `install.sh --upgrade`):
+
+```bash
+~/.agents/skills/memovault/scripts/memovault.sh upgrade
+~/.agents/skills/memovault/scripts/memovault.sh upgrade --no-pull
+```
+
+Or directly from the dev repo:
+
+```bash
+./install/install.sh --upgrade            # pull (if git) + re-sync + re-inject
+./install/install.sh --upgrade --no-pull  # skip the `git pull` step
+./install/install.sh --upgrade --dry-run  # preview
+```
+
+Notes:
+- `preflight` prints `hint: update-available <installed> <dev> (run: memovault
+  upgrade)` when the installed `VERSION` is older than the dev repo's.
+- If the dev repo is a git repo, `upgrade` runs `git pull --ff-only` first; pass
+  `--no-pull` to skip it. Git is optional; the installer falls back to local
+  files if git is absent or the pull fails.
+- Upgrade re-runs source copy, vault scaffold, env write, and every agent
+  injection with `FORCE=1`. It is idempotent.
+- Upgrade never touches vault data (`$AGENT_MEMO_VAULT`).
+
+## 8. Uninstall
 
 Remove the injected stub files listed by `--dry-run`, delete
 `~/.agents/skills/memovault/`, and (optionally) remove the `agent-memo-vault`

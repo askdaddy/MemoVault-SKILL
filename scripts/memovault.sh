@@ -20,6 +20,64 @@ mm_resolve_root() {
   printf '%s' "$(cd "$(dirname "$src")" && pwd)"
 }
 
+# Print the version string from a VERSION file, or empty if missing.
+mm_version_of() {
+  local dir="$1"
+  [ -f "$dir/VERSION" ] && { cat "$dir/VERSION" 2>/dev/null | tr -d '[:space:]'; return; }
+  printf ''
+}
+
+# Compare two dotted versions. Print newer|equal|older (a vs b).
+mm_vercmp() {
+  local a="$1" b="$2"
+  [ "$a" = "$b" ] && { printf 'equal'; return; }
+  local IFS='.'
+  set -- $a $b
+  local a1="${1:-0}" a2="${2:-0}" a3="${3:-0}" b1="${4:-0}" b2="${5:-0}" b3="${6:-0}"
+  if [ "$a1" -gt "$b1" ] 2>/dev/null; then printf 'newer'; return; fi
+  if [ "$a1" -lt "$b1" ] 2>/dev/null; then printf 'older'; return; fi
+  if [ "$a2" -gt "$b2" ] 2>/dev/null; then printf 'newer'; return; fi
+  if [ "$a2" -lt "$b2" ] 2>/dev/null; then printf 'older'; return; fi
+  if [ "$a3" -gt "$b3" ] 2>/dev/null; then printf 'newer'; return; fi
+  if [ "$a3" -lt "$b3" ] 2>/dev/null; then printf 'older'; return; fi
+  printf 'equal'
+}
+
+# Resolve the dev repo for update checks. Priority:
+#   1. MEMOVAULT_DEV_REPO env var
+#   2. .source-origin recorded at install time (lives in the source dir)
+#   3. the repo this helper lives in (best effort, for dev runs)
+# Print path or return 1.
+mm_resolve_dev_repo() {
+  local p
+  p="${MEMOVAULT_DEV_REPO:-}"
+  [ -n "$p" ] && [ -d "$p" ] && { printf '%s' "$p"; return 0; }
+  if [ -f "$MM_SOURCE/.source-origin" ]; then
+    p="$(cat "$MM_SOURCE/.source-origin" 2>/dev/null | tr -d '[:space:]')"
+    [ -n "$p" ] && [ -d "$p" ] && { printf '%s' "$p"; return 0; }
+  fi
+  if [ -f "$MM_SOURCE/VERSION" ]; then
+    printf '%s' "$MM_SOURCE"
+    return 0
+  fi
+  return 1
+}
+
+# Check for an available update. Print "update-available <installed> <dev>" or
+# nothing. Returns 0 if an update is available, 1 otherwise.
+mm_check_update() {
+  local dev inst_ver dev_ver rel
+  dev="$(mm_resolve_dev_repo 2>/dev/null)" || return 1
+  [ -f "$dev/VERSION" ] || return 1
+  inst_ver="$(mm_version_of "$MM_SOURCE")"
+  dev_ver="$(mm_version_of "$dev")"
+  [ -n "$inst_ver" ] && [ -n "$dev_ver" ] || return 1
+  rel="$(mm_vercmp "$dev_ver" "$inst_ver")"
+  [ "$rel" = newer ] || return 1
+  printf 'update-available %s %s' "$inst_ver" "$dev_ver"
+  return 0
+}
+
 # --- environment ----------------------------------------------------------
 
 MM_ROOT="$(mm_resolve_root)"
@@ -128,15 +186,22 @@ mm_w_rename() {
 mm_preflight() {
   local app_state="stopped"
   [ "${MM_APP_RUNNING:-0}" = 1 ] && app_state="running"
-  printf 'mode=%s vault=%s bin=%s app=%s\n' \
-    "$MM_MODE" "$MM_VAULT" "${MM_OBSIDIAN:-}" "$app_state"
+  printf 'mode=%s vault=%s bin=%s app=%s forced=%s\n' \
+    "$MM_MODE" "$MM_VAULT" "${MM_OBSIDIAN:-}" "$app_state" "${MM_FORCED:-0}"
   printf 'source=%s\n' "$MM_SOURCE"
   if [ "$MM_MODE" = fs ]; then
-    if [ -z "${MM_OBSIDIAN:-}" ]; then
+    if [ "${MM_FORCED:-0}" = 1 ]; then
+      printf 'hint: fs mode forced via MM_FORCE_FS=1; CLI probe skipped (Obsidian GUI will not launch)\n' >&2
+    elif [ -z "${MM_OBSIDIAN:-}" ]; then
       printf 'hint: obsidian CLI not found; install Obsidian 1.12.7+ and enable Settings -> General -> Command line interface\n' >&2
     elif [ "$app_state" = stopped ]; then
       printf 'hint: Obsidian app is not running; start it for cli mode (backlink graph, link-safe move)\n' >&2
     fi
+  fi
+  # Update check: compare installed VERSION vs dev repo VERSION.
+  local upd
+  if upd="$(mm_check_update 2>/dev/null)"; then
+    printf 'hint: %s (run: memovault upgrade)\n' "$upd" >&2
   fi
 }
 
@@ -155,12 +220,25 @@ mm_cmd_new() {
   mmfs_new "$domain" "$title" "$tags" "$body"
 }
 
+# Upgrade: delegate to install.sh --upgrade. The installer re-syncs the source
+# from the dev repo (auto-detected or via MEMOVAULT_DEV_REPO), optionally pulls
+# from git, and re-injects all agent stubs.
+mm_cmd_upgrade() {
+  local installer="$MM_SOURCE/install/install.sh"
+  if [ ! -x "$installer" ]; then
+    mm_die "upgrade: installer not found at $installer (is the source dir intact?)"
+  fi
+  exec "$installer" --upgrade "$@"
+}
+
 mm_usage() {
   cat <<'USAGE'
 memovault - sink knowledge into the local memo vault.
 
 Resolve:
   preflight                     show mode (cli/fs), vault, obsidian binary, app state
+  upgrade                       re-sync from the dev repo and re-inject agents
+                                (delegates to install.sh --upgrade)
 
 Capture / edit:
   new <domain> <title> [--tags a,b] [--body "text"]
@@ -201,6 +279,7 @@ main() {
 
   case "$sub" in
     preflight)    mm_preflight ;;
+    upgrade)      mm_cmd_upgrade "$@" ;;
     new)          mm_cmd_new "$@" ;;
     append)       mmfs_append "${1:-}" "${2:-}" ;;
     prepend)      mmfs_prepend "${1:-}" "${2:-}" ;;

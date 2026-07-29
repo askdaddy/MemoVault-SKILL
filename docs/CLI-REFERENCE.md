@@ -11,6 +11,9 @@ skill relies on. The full reference is at `help.obsidian.md` under
 - The Obsidian app must be running; the CLI connects to the running instance.
 - macOS manual register: `sudo ln -sf /Applications/Obsidian.app/Contents/MacOS/obsidian-cli /usr/local/bin/obsidian`
 - Linux: binary copied to `~/.local/bin/obsidian` (ensure it is on PATH).
+- Headless / silent operation: set `MM_FORCE_FS=1` to skip the CLI probe. MemoVault
+  then uses the filesystem fallback for everything, bypassing Obsidian entirely.
+  No GUI is launched; no `obsidian` binary is needed.
 
 ## Syntax
 
@@ -133,4 +136,3 @@ obsidian property:set name=heat value=growing file="Async Rust"
 
 # Backlinks with counts
 obsidian backlinks file="Async Rust" counts format=json
-```

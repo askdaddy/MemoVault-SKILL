@@ -214,3 +214,159 @@ Self-tested against bash 3.2.57 with a throwaway vault. Findings and fixes:
 - Migrated the live machine: reinstalled source to the new path, re-injected
   opencode (`--force`) to repoint its block, removed the old source dir.
 - preflight and search verified from the new helper path.
+
+## 6. Entry: install.sh --verify (2026-07-16)
+
+### Research
+- User found memovault listed under several agents but `~/.agent-memo-vault/`
+  had no notes. Helper preflight/new/search worked; always-on adapter injection
+  was missing for Cursor (`~/.cursor/rules/memovault.mdc` absent) and most
+  other agents (only opencode had the protocol block).
+- Root cause: skill discovery (`~/.agents/skills/memovault`) is not always-on;
+  capture also stays propose-then-confirm unless the user says remember/记一下.
+
+### Innovate
+- One-off reinstall vs lasting check. Chose both: re-ran `--all --force` on the
+  machine, and add `--verify` so incomplete injection is visible next time.
+- Keep verify read-only and exit non-zero on failure.
+
+### Plan (approved via user "执行")
+- Add `install.sh --verify` (optional `--agent`); check source, helper, vault
+  scaffold, and each agent's Memory protocol injection (Cursor also requires
+  `alwaysApply: true`).
+- Document in `docs/INSTALL.md` section 6; record here.
+
+### Execute
+- `install/install.sh`: `--verify`, `mm_verify` / `mm_verify_agent`.
+- `docs/INSTALL.md`: verify section clarifies discovery vs always-on.
+- Post-install next-steps line points at `--verify`.
+
+### Review
+- `bash -n install/install.sh` passes; `--verify` reports OK after `--all --force`.
+
+## 7. Entry: MM_FORCE_FS headless mode (2026-07-28)
+
+### Research
+- User reported that invoking the skill opens the Obsidian GUI window, which is
+  undesirable for silent agent runs. Asked whether the Obsidian CLI has a headless
+  mode.
+- Re-read `scripts/lib/cli.sh`, `scripts/memovault.sh`, `docs/ARCHITECTURE.md`,
+  `docs/CLI-REFERENCE.md`, `SKILL.md`.
+- Probed the live machine: `command -v obsidian` resolves to
+  `/Applications/Obsidian.app/Contents/MacOS/obsidian` (the GUI app binary, not a
+  real `obsidian-cli`); `obsidian version` hangs and launches the GUI, timing out
+  after 30s. The official CLI bundle (`obsidian-cli`) is absent under
+  `/Applications/Obsidian.app/Contents/MacOS/`.
+- Confirmed the official Obsidian CLI has no headless mode: it is an IPC client to
+  the running desktop app. No flag or env var exists to run it without the GUI.
+- Confirmed the skill had no force-fs switch: `mmcli_detect` (cli.sh:63-71) always
+  probed the binary + app, with no env var override.
+
+### Innovate
+- Option A: add a force-fs env var so the probe is skipped entirely (chosen). The
+  fs layer already implements every subcommand; tradeoff is approximate backlinks
+  and non-link-safe move/rename.
+- Option B: correctly install the real `obsidian-cli` binary via symlink. Rejected
+  as the primary fix because the binary was absent from the installed app bundle
+  and it still requires the GUI app to be running (no true headless).
+- Option C: accept the GUI must be open. Rejected; the user explicitly wants to
+  avoid window launches.
+- Naming: `MM_FORCE_FS` (matches the internal `MM_MODE`/`MM_` convention, short,
+  explicit) vs `AGENT_MEMO_FORCE_FS` (matches the public `AGENT_MEMO_VAULT`
+  namespace). Chose `MM_FORCE_FS` since it directly controls internal mode
+  detection and preflight already surfaces `MM_MODE` to users.
+
+### Plan (approved via user "按照方案A来做计划并落地")
+- `scripts/lib/cli.sh`: `mmcli_detect` checks `MM_FORCE_FS=1` first; if set,
+  short-circuits to fs mode, sets a new `MM_FORCED=1` flag, skips binary location
+  and app probe so the GUI never launches.
+- `scripts/memovault.sh`: `mm_preflight` adds `forced=` field and a hint line for
+  forced mode.
+- `SKILL.md`: document `MM_FORCE_FS` in sections 1, 2, 8.
+- `docs/ARCHITECTURE.md`: update section 4 (mode detection) with the short-circuit
+  step and the headless caveat.
+- `docs/CLI-REFERENCE.md`: add a headless bullet to Prerequisites.
+- `docs/RIPER.md`: record this entry.
+- `VERSION`: bump 0.2.0 -> 0.2.1.
+
+### Execute
+- `scripts/lib/cli.sh`: added the `MM_FORCE_FS` short-circuit at the top of
+  `mmcli_detect`; sets `MM_FORCED`, `MM_OBSIDIAN=""`, `MM_APP_RUNNING=0`,
+  `MM_MODE=fs`.
+- `scripts/memovault.sh`: `mm_preflight` prints `forced=` and a dedicated hint
+  when forced.
+- `SKILL.md`: added env export in section 1, preflight note in section 2, forced
+  mode paragraph in section 8.
+- `docs/ARCHITECTURE.md`: rewrote section 4 detection order with the short-circuit
+  as step 1 and the forced= line in the example.
+- `docs/CLI-REFERENCE.md`: added the headless bullet to Prerequisites.
+- This entry recorded; `VERSION` bumped.
+
+### Review
+- `bash -n scripts/memovault.sh` and `bash -n scripts/lib/cli.sh` pass.
+- `MM_FORCE_FS=1 scripts/memovault.sh preflight` reports `mode=fs ... forced=1`
+  instantly without launching the GUI, confirming the headless path works.
+- Without the env var, behavior is unchanged (probe runs as before).
+- Naming contract (AGENTS.md section 2) upheld: new env var `MM_FORCE_FS` and new
+  global `MM_FORCED` follow the `MM_` internal convention; no public namespace
+  collision. No emoji added to any file.
+
+## 8. Entry: upgrade subcommand and self-update (2026-07-29)
+
+### Research
+- Re-read `scripts/memovault.sh` (`mm_resolve_dev_repo`, `mm_check_update`,
+  `mm_cmd_upgrade`, the dispatch `upgrade)` case, and the update hint in
+  `mm_preflight`) and `install/install.sh` (`mm_resolve_dev_repo`,
+  `mm_version_of`, `mm_vercmp`, `mm_upgrade`, the `--upgrade`/`--no-pull` flags,
+  and the `.source-origin` write in `mm_install_source`).
+- Confirmed the code was already complete and verified end-to-end in a prior
+  session (0.2.0 -> 0.2.1 upgrade succeeded on this machine; all 10 agent stubs
+  re-injected; `preflight` then showed no update hint). Only documentation and the
+  version bump remained.
+- Verified the exact runtime strings so the docs stay accurate: the preflight
+  hint is emitted as `printf 'hint: %s (run: memovault upgrade)\n'` where `%s` is
+  `update-available <installed> <dev>`, so the real line reads
+  `hint: update-available <installed> <dev> (run: memovault upgrade)`.
+
+### Innovate
+- Version source: a remote/npm registry vs the local dev repo. Chose the dev
+  repo as the single source of truth (no network dependency, matches the skill's
+  pure local design). Auto-detected from `.source-origin`, overridable via
+  `MEMOVAULT_DEV_REPO`.
+- Trigger: fully automatic upgrade vs an explicit `upgrade` plus a non-blocking
+  `preflight` hint. Chose the explicit form; `preflight` surfaces availability
+  but never mutates state.
+- Git: always pull vs optional pull vs no git. Chose optional `git pull
+  --ff-only`, skippable with `--no-pull`; the installer never depends on git and
+  falls back to local files if it is absent or the pull fails.
+- Naming: the new public env var uses the `MEMOVAULT_DEV_REPO` prefix (matches the
+  skill name, consistent with `AGENT_MEMO_VAULT`); new helpers/globals keep the
+  lowercase `mm_` internal convention (`mm_version_of`, `mm_vercmp`,
+  `mm_resolve_dev_repo`, `mm_check_update`, `mm_cmd_upgrade`, `mm_upgrade`).
+
+### Plan (approved)
+- Document the upgrade in `SKILL.md` section 2 (Preflight) and bump the
+  frontmatter `version: 0.2.1` -> `0.3.0` (a feature add, not just a fix).
+- Bump `VERSION` `0.2.1` -> `0.3.0`.
+- Add an "Upgrade" section to `docs/INSTALL.md`.
+- Add an "Upgrade flow" section to `docs/ARCHITECTURE.md`.
+- Record this entry.
+- Final review: `bash -n` on both scripts, emoji scan, naming-contract check.
+
+### Execute
+- `SKILL.md`: added the "Update and upgrade" subsection in section 2; bumped
+  the frontmatter to 0.3.0.
+- `VERSION`: bumped to 0.3.0.
+- `docs/INSTALL.md`: added section 7 (Upgrade); renumbered Uninstall to 8.
+- `docs/ARCHITECTURE.md`: added section 9 (Upgrade flow); renumbered Extension
+  points to 10.
+- This entry recorded.
+
+### Review
+- `bash -n scripts/memovault.sh` and `bash -n install/install.sh` both pass.
+- Emoji scan across `*.md`/`*.sh`/`*.json` in the repo: none found.
+- Naming contract (AGENTS.md section 2) upheld: new public env var
+  `MEMOVAULT_DEV_REPO` and all new internal helpers/globals follow their
+  respective conventions; no namespace collision. No emoji in any changed file.
+- Upgrade never writes outside the skill source dir and never touches
+  `$AGENT_MEMO_VAULT` data.

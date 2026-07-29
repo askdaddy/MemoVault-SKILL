@@ -23,8 +23,10 @@ how-to, design rationale, or a non-obvious fact):
 - On confirmation, write it:
   `__MEMOVAULT_HELPER__ new <domain> "<title>" --tags a,b --body "..."`
   then add `[[wikilinks]]` and set short `aliases`. New notes start `heat: seedling`.
-- If the user explicitly says "remember this" / "记一下" / "沉淀一下", capture
-  without asking, then confirm what you saved.
+- If the user explicitly says "remember this" / "save this" / "note this" /
+  "capture this" / "记一下" / "记下来" / "帮我记一下" / "沉淀一下" /
+  "存一下" / "存到笔记" / "记到知识库", capture without asking, then
+  confirm what you saved.
 - Otherwise do not capture small talk, transient debug output, or anything the
   user would not search for later.
 

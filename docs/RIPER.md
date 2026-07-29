@@ -370,3 +370,68 @@ Self-tested against bash 3.2.57 with a throwaway vault. Findings and fixes:
   respective conventions; no namespace collision. No emoji in any changed file.
 - Upgrade never writes outside the skill source dir and never touches
   `$AGENT_MEMO_VAULT` data.
+
+## 9. Entry: persistent headless via env.sh + --force-fs (2026-07-29)
+
+### Research
+- User reported that opencode invoking the skill still popped the Obsidian GUI.
+- Re-read `scripts/memovault.sh` (startup resolves `MM_SOURCE`, sources
+  `lib/*.sh`, then runs `mmcli_detect`) and `install/install.sh` (`mm_write_env`).
+  Root cause confirmed: the helper never sourced `env.sh`; `env.sh` only set
+  `AGENT_MEMO_VAULT` (not `MM_FORCE_FS`); and no caller on the opencode path
+  exports `MM_FORCE_FS`. So `mmcli_detect` ran the full probe. On this host
+  `obsidian` is the GUI app binary, so the functional probe (`obsidian version`,
+  backgrounded) itself launched the GUI. There was no persistent,
+  caller-independent headless switch.
+
+### Innovate
+- Where to anchor headless: per-call env export (fragile; agents forget) vs the
+  user's shell rc (opencode may spawn non-login shells, so unreliable) vs the
+  helper sourcing its own config (robust; applies to every caller). Chose the
+  last.
+- Default: opt-in `--force-fs` (chosen) vs inverting to headless-by-default.
+  Opt-in preserves cli mode for users with a real `obsidian-cli`; headless stays
+  a per-machine preference. User approved option A.
+- Durability: `mm_write_env` overwrites `env.sh` on every install/upgrade, so a
+  hand-edited `MM_FORCE_FS` line would be wiped. Therefore the installer must own
+  the line via a flag.
+
+### Plan (approved via user "A")
+- `scripts/memovault.sh`: source `$MM_SOURCE/env.sh` at startup, before
+  `MM_VAULT` resolution and `mmcli_detect`.
+- `install/install.sh`: add `FORCE_FS=0` init, a `--force-fs` flag (usage + arg
+  parse), and have `mm_write_env` append
+  `export MM_FORCE_FS="${MM_FORCE_FS:-1}"` when set.
+- Bump `VERSION` 0.3.0 -> 0.3.1; document in SKILL.md, INSTALL.md, ARCHITECTURE.md.
+- Apply on this machine via `install.sh --upgrade --force-fs --no-pull`.
+- Test: simulate the opencode path (clean env, no `MM_FORCE_FS`) and confirm
+  `preflight` reports `forced=1` with no probe / no GUI.
+
+### Execute
+- `scripts/memovault.sh`: added the `env.sh` source line right after `MM_SOURCE`.
+- `install/install.sh`: `FORCE_FS=0` init; `--force-fs` in usage and arg parsing;
+  `mm_write_env` conditionally appends the `MM_FORCE_FS` export via a quoted
+  heredoc (no expansion ambiguity).
+- `VERSION` -> 0.3.1; SKILL.md section 1 note + frontmatter; INSTALL.md sections
+  3 and 4; ARCHITECTURE.md section 3.
+- Applied on this machine: installed copy 0.3.0 -> 0.3.1; `env.sh` now carries
+  `export MM_FORCE_FS="${MM_FORCE_FS:-1}"`; all 10 agent stubs re-injected.
+- This entry recorded.
+
+### Review
+- `bash -n` passes on both `scripts/memovault.sh` and `install/install.sh`.
+- Temp-dir install test: `--force-fs` writes
+  `export MM_FORCE_FS="${MM_FORCE_FS:-1}"` into `env.sh`; without `--force-fs`
+  the line is absent (backward compatible; hosts with a real CLI keep probe
+  behavior).
+- opencode-path simulation (`env -u MM_FORCE_FS ... preflight`): reports
+  `mode=fs ... forced=1` with `bin=` empty in 0.74s, proving the probe never ran
+  and the GUI cannot launch. The fix comes from the helper sourcing `env.sh`,
+  not from inherited env.
+- Override semantics verified without triggering the probe: default (unset) -> 1,
+  caller `MM_FORCE_FS=0` -> 0, caller `MM_FORCE_FS=1` -> 1. A caller can opt back
+  into CLI probing per invocation.
+- Naming contract (AGENTS.md section 2) upheld: no new public env var (`MM_FORCE_FS`
+  is from entry 7); the installer-local `FORCE_FS` follows the existing uppercase
+  convention (`FORCE`, `DRY_RUN`, `NO_PULL`); `--force-fs` is distinct from
+  `--force`. No emoji in any changed file.

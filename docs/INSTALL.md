@@ -61,6 +61,9 @@ Flags:
 - `--source <path>`: override the skill source dir.
 - `--inline`: embed the full `SKILL.md` in each adapter instead of a pointer.
 - `--force`: overwrite existing files.
+- `--force-fs`: write `MM_FORCE_FS=1` into `env.sh` so the helper runs headless
+  (skips the Obsidian CLI probe; no GUI). Opt-in; default off preserves cli mode
+  for hosts with a real `obsidian-cli`.
 - `--dry-run`: print actions only.
 - `--verify`: read-only check of skill source, vault scaffold, and always-on
   agent injections. Optional `--agent` to limit scope. Exit 1 on failure.
@@ -70,14 +73,31 @@ Flags:
 ## 4. Environment
 
 `scripts/memovault.sh` defaults `AGENT_MEMO_VAULT` to `~/.agent-memo-vault`, so no
-global export is required. To make the override permanent for your shell, the
-installer writes `~/.agents/skills/memovault/env.sh`:
+global export is required. The helper sources `~/.agents/skills/memovault/env.sh`
+at startup, so anything pinned there applies to every caller (agents rarely
+export env vars themselves) without each agent sourcing it. The installer writes
+that file:
 
 ```bash
 export AGENT_MEMO_VAULT="${AGENT_MEMO_VAULT:-$HOME/.agent-memo-vault}"
 ```
 
-Source it from your shell rc if you change the default:
+Headless (no Obsidian GUI): on a host whose `obsidian` binary is the GUI app
+rather than a real `obsidian-cli`, the mode probe itself launches the GUI. Pin
+headless mode persistently for all agents:
+
+```bash
+./install/install.sh --force-fs                       # adds MM_FORCE_FS=1 to env.sh
+./install/install.sh --upgrade --force-fs --no-pull    # keep it across upgrades
+```
+
+This writes `export MM_FORCE_FS="${MM_FORCE_FS:-1}"` into env.sh. It is opt-in;
+hosts with a working `obsidian-cli` should leave it off to keep cli mode
+(authoritative backlinks, link-safe move/rename). A caller can still override per
+invocation by exporting `MM_FORCE_FS=0`.
+
+You may still source env.sh from your shell rc for your own terminal use (not
+required for the helper):
 
 ```bash
 echo 'source "$HOME/.agents/skills/memovault/env.sh"' >> ~/.zshrc

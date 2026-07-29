@@ -82,6 +82,13 @@ mm_check_update() {
 
 MM_ROOT="$(mm_resolve_root)"
 MM_SOURCE="$(cd "$MM_ROOT/.." && pwd)"            # skill source dir
+
+# Source runtime config (vault path, headless mode) so it applies to every
+# caller. Agents rarely export these themselves; without this, env.sh would only
+# take effect if the caller's shell had sourced it first. Each var uses
+# ${VAR:-...} so a caller may still override per invocation.
+[ -f "$MM_SOURCE/env.sh" ] && . "$MM_SOURCE/env.sh"
+
 MM_VAULT="${AGENT_MEMO_VAULT:-$HOME/.agent-memo-vault}"
 
 # shellcheck source=lib/fs.sh

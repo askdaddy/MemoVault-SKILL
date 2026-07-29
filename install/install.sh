@@ -17,6 +17,7 @@ DRY_RUN=0
 FORCE=0
 INLINE=0
 STDOUT_MODE=0
+FORCE_FS=0
 DO_REGISTER=0
 DO_SOURCE_ONLY=0
 DO_VERIFY=0
@@ -46,6 +47,9 @@ Options:
   --all              inject into every supported agent
   --inline           embed the full SKILL.md instead of a pointer stub
   --force            overwrite existing stub files
+  --force-fs         write MM_FORCE_FS=1 into env.sh so the helper runs headless
+                     (skips the Obsidian CLI probe; no GUI). Opt-in; default off
+                     preserves cli mode for hosts with a real obsidian-cli.
   --dry-run          print actions without writing
   --stdout           print the rendered body for an agent (for UI-only targets
                      such as Trae global AI Rules); requires --agent <name>
@@ -152,9 +156,16 @@ mm_write_env() {
   mm_note "3) write env snippet -> $SOURCE/env.sh"
   if [ "$DRY_RUN" = 1 ]; then return 0; fi
   cat > "$SOURCE/env.sh" <<EOF
-# Source this file to pin the MemoVault vault path.
+# Runtime config for the MemoVault helper. The helper sources this file at
+# startup, so it applies to every caller (agents rarely export env vars
+# themselves). Each var uses \${VAR:-...} so a caller may override per call.
 export AGENT_MEMO_VAULT="\${AGENT_MEMO_VAULT:-$VAULT}"
 EOF
+  if [ "$FORCE_FS" = 1 ]; then
+    cat >> "$SOURCE/env.sh" <<'EOF'
+export MM_FORCE_FS="${MM_FORCE_FS:-1}"
+EOF
+  fi
 }
 
 # Render an adapter template with placeholders substituted. Print to stdout.
@@ -470,6 +481,7 @@ while [ $# -gt 0 ]; do
     --register-vault) DO_REGISTER=1; shift ;;
     --inline) INLINE=1; shift ;;
     --force) FORCE=1; shift ;;
+    --force-fs) FORCE_FS=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --stdout) STDOUT_MODE=1; shift ;;
     --verify) DO_VERIFY=1; shift ;;

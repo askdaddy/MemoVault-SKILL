@@ -59,6 +59,11 @@ Rules:
   passing `vault=agent-memo-vault` as the first parameter.
 - The vault must be registered in Obsidian (`obsidian.json`) for `cli` mode to
   recognize it. The installer can register it; see `INSTALL.md`.
+- At startup the helper sources `env.sh` from the skill source dir, so
+  `AGENT_MEMO_VAULT` (and `MM_FORCE_FS`, if set there) apply to every caller
+  without each agent exporting them. `install.sh --force-fs` writes
+  `MM_FORCE_FS=1` into `env.sh` for persistent headless operation on hosts whose
+  `obsidian` binary is the GUI app.
 
 ## 4. Runtime mode detection (`preflight`)
 

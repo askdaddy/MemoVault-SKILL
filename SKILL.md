@@ -1,6 +1,6 @@
 ---
 name: memovault
-version: 0.3.0
+version: 0.3.1
 description: "Sink knowledge into a local Obsidian vault with bash. Use when the user wants to capture, save, record, or sink knowledge, notes, learnings, decisions, meeting takeaways, code snippets, or research into their memo vault / second brain / Obsidian knowledge base; or to create, edit, link, search, classify by domain, promote by heat, or maintain backlinks and daily notes. Trigger phrases: 记到笔记 / 记一下 / 笔记里记一下 / 沉淀 / 沉淀一下 / 存到 vault / 存一下 / 存档 / 存到知识库 / 知识库 / 备忘录 / 双链 / 回链 / 按领域归档 / 提升热度 / 日记 / 每日笔记 / remember this / save this / save to vault / save to notes / memo it / note this / capture this / second brain / knowledge base / daily note / backlinks / link this note."
 ---
 
@@ -41,6 +41,15 @@ MM="$HOME/.agents/skills/memovault/scripts/memovault.sh"
 ```
 
 Everything below assumes `$MM` points at the helper and `$AGENT_MEMO_VAULT` is set.
+
+The helper sources `env.sh` (`~/.agents/skills/memovault/env.sh`) at startup, so
+variables pinned there apply to every caller without each agent exporting them.
+To persistently run headless on a host whose `obsidian` binary is the GUI app
+(not a real `obsidian-cli`), write `MM_FORCE_FS=1` there once:
+
+```bash
+install/install.sh --force-fs   # writes MM_FORCE_FS=1 into env.sh (re-run on upgrade)
+```
 
 ## 2. Preflight (run once per session)
 

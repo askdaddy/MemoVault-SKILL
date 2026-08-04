@@ -435,3 +435,335 @@ Self-tested against bash 3.2.57 with a throwaway vault. Findings and fixes:
   is from entry 7); the installer-local `FORCE_FS` follows the existing uppercase
   convention (`FORCE`, `DRY_RUN`, `NO_PULL`); `--force-fs` is distinct from
   `--force`. No emoji in any changed file.
+
+## 10. Entry: layered recall + distill provenance + skill notes (2026-08-03)
+
+### Research
+- Read [TencentDB Agent Memory README_CN](https://github.com/TencentCloud/TencentDB-Agent-Memory/blob/feat/server_team/README_CN.md)
+  (feat/server_team): four asset types (Chat Memory / Skill / Wiki / CodeGraph),
+  L0→L1→L2→L3 pyramid, recall budgets (count/char/timeout), progressive
+  disclosure, evidence drill-down, Agent Loadout, Memory Proxy injection.
+- Compared to MemoVault: local Obsidian + bash; `domain` + `heat`; always-on
+  recall = one `search` then optional `read`; capture = propose-then-confirm;
+  vector search reserved; no daemon / no ACL / no proxy (by design).
+- User asked for a RIPER plan covering the three highest-fit practices only:
+  (1) recall budget + heat/layer priority, (2) distill + provenance, (3) skill
+  note contract. No code until this plan is approved.
+
+### Innovate
+- Layer model: new L0–L3 folders vs optional `kind` frontmatter mapped onto the
+  existing vault layout. Chose optional `kind` (`raw` | `atom` | `scenario` |
+  `persona` | `skill`) plus existing `heat` / `daily/` / `brain/<domain>/`.
+  Avoids a second taxonomy tree and stays searchable via frontmatter.
+- Recall budget: helper-enforced hard caps vs protocol-only limits. Chose
+  protocol-only for this entry (agents already own recall); optionally pass
+  `search --limit N`. A later entry may add `search --prefer-heat` if needed.
+- Provenance: body-only `[[wikilinks]]` vs frontmatter `sources: []` plus
+  wikilinks. Chose both: `sources` for machine scan, `[[links]]` for the graph.
+- Skill assets: separate skill-manager product vs vault notes under
+  `domain: skills` with `kind: skill`. Chose vault notes + `templates/skill.md`
+  so SOP lives next to related knowledge without leaving the FS skill model.
+- Explicitly out of scope: Memory Proxy, team ACL/Hub, async LLM distill
+  pipeline, CodeGraph inside memovault, per-agent loadout files, vector search
+  (still reserved in DEVELOPMENT.md).
+
+### Plan (approved via user "批准")
+
+**Goal:** teach agents to recall less but better, distill raw captures into
+linked structured notes, and capture reusable SOPs as first-class skill notes
+— without changing the pure-local bash/Obsidian identity.
+
+**Version:** bump `0.3.1` -> `0.4.0` (protocol + classification feature).
+
+**Non-goals for this entry:** new daemon, vector index, loadout files, ingest
+subcommand, helper changes beyond optional `new` flags and template wiring.
+
+#### A. Classification contract (`docs/CLASSIFICATION.md`)
+
+Add section "Memory kinds (optional frontmatter)":
+
+| `kind` | Maps to Tencent layer | Typical home | Default heat |
+|---|---|---|---|
+| `raw` | L0 | `daily/` or `brain/inbox/` | seedling |
+| `atom` | L1 | `brain/<domain>/` short fact/decision | seedling |
+| `scenario` | L2 | project/scene notes + MOCs | growing |
+| `persona` | L3 | rare preference/constraint notes | evergreen |
+| `skill` | Skill asset | `brain/skills/` | growing |
+
+Rules:
+- `kind` is optional; omit = treat as ordinary domain note (today's behavior).
+- `sources:` optional YAML list of note titles or vault-relative paths that
+  evidence this note (required when distilling from raw/daily).
+- Heat promotion heuristics unchanged; distill may *suggest* `promote` when an
+  atom gains backlinks.
+
+Update frontmatter example in CLASSIFICATION.md and `templates/note.md`:
+
+```yaml
+---
+title: Human Readable Title
+domain: engineering
+kind: atom          # optional
+tags: [tag-a]
+heat: seedling
+aliases: []
+sources: []         # optional; fill when distilled
+created: YYYY-MM-DD
+updated: YYYY-MM-DD
+---
+```
+
+#### B. Skill note template (`templates/skill.md`)
+
+New template with fixed body sections (plain English headings, no emoji):
+
+```markdown
+---
+title: {{title}}
+domain: skills
+kind: skill
+tags: [skill]
+heat: growing
+aliases: []
+sources: []
+created: {{date}}
+updated: {{date}}
+---
+
+# {{title}}
+
+## Trigger
+When to use this skill (boundaries; when NOT to use it).
+
+## Steps
+1. ...
+
+## Verify
+How to know it worked.
+
+## Related
+- [[related note]]
+```
+
+Installer already copies templates into the vault scaffold; extend
+`mm_scaffold_vault` to include `skill` if not already looping all templates
+(today loops `note daily moc` — add `skill`).
+
+#### C. Memory protocol — recall budget (`SKILL.md` §6 + `_protocol.md`)
+
+Replace the thin recall bullets with:
+
+1. One `search "<narrow keywords>"` per task (prefer `--limit 10` or tighter).
+2. Rank hits mentally: prefer `heat: evergreen` then `growing`; prefer
+   `kind: persona|scenario|skill|atom` over `raw` / pure `daily/` noise.
+3. Read at most **3** notes per task (usually 1). Progressive disclosure:
+   titles/snippets first, full `read` only if relevant.
+4. If nothing useful, skip silently.
+5. Cite used vault notes in the answer when they materially affect it.
+
+#### D. Memory protocol — distill + provenance (`SKILL.md` + `_protocol.md`)
+
+New subsection after Capture:
+
+- Raw capture (daily line or `kind: raw` / inbox) is L0 evidence, not the end
+  state.
+- When durable knowledge appears, prefer creating/updating an `atom` or
+  `scenario` note and set `sources: ["Daily 2026-08-03"]` (or titles) **and**
+  body `[[wikilinks]]` back to the raw note.
+- After distill, offer to leave a one-line pointer on the daily note linking to
+  the new atom.
+- Never delete raw evidence without explicit user consent.
+- Persona notes (`kind: persona`) are rare; only for stable preferences /
+  hard constraints; start `heat: evergreen` only with user confirmation
+  (otherwise seedling then suggest promote).
+
+#### E. Memory protocol — skill capture
+
+When the turn produced a reusable SOP (how-to that would save future turns):
+- Propose: `skills/<Title>` with `kind: skill`, or on explicit remember phrases
+  write immediately.
+- Use `templates/skill.md` structure (Trigger / Steps / Verify / Related).
+- Link related domain atoms/scenarios with `[[wikilinks]]`.
+
+#### F. Helper (minimal)
+
+- `scripts/lib/fs.sh` `mmfs_new`: emit `sources: []`; accept optional kind
+  argument (5th param or parse `--kind` in `memovault.sh` dispatch for `new`).
+- CLI path: after create, `property:set` for `kind` / ensure `sources` if easy;
+  if CLI create ignores unknown props, fs write remains source of truth for new
+  notes in fs mode; in cli mode set properties after create.
+- Prefer: `"$MM" new <domain> "<Title>" [--tags a,b] [--kind atom] [--body "..."]`
+- No new subcommands (`by-kind`, `distill`) in this entry — agent uses
+  `search` / `read` / `append` / `promote`.
+
+#### G. Docs and install
+
+- `docs/ARCHITECTURE.md`: short "Layered memory (protocol)" note pointing at
+  CLASSIFICATION kinds; no new runtime layer.
+- `docs/DEVELOPMENT.md`: note that vector search remains phase 2; kinds are
+  orthogonal.
+- `docs/RIPER.md`: this entry (Execute/Review filled after approval).
+- `VERSION` + `SKILL.md` frontmatter `version: 0.4.0`.
+- After Execute: `./install/install.sh --upgrade --force-fs --no-pull` (or
+  equivalent on this machine) and `./install/install.sh --all --force` so
+  `_protocol.md` changes reach agents; then `--verify`.
+
+#### H. Review checklist
+
+- `bash -n` on touched scripts.
+- No emoji in any changed file.
+- Naming contract: no new public env vars; `kind` / `sources` are vault
+  frontmatter only.
+- Manual: `new skills "Example SOP" --kind skill`, confirm frontmatter; protocol
+  text present in installed `~/.cursor/rules/memovault.mdc` and Claude stub.
+- Confirm `templates/skill.md` exists under skill source and vault scaffold.
+
+**Approval gate:** do not Execute until the user explicitly approves this plan
+(possibly with edits to budgets, kind enum, or whether `--kind` lands in helper
+vs protocol-only).
+
+### Execute
+- `docs/CLASSIFICATION.md`: frontmatter `kind`/`sources`; new Memory kinds
+  section; renumbered later sections; daily distill note; `skills` domain.
+- `templates/note.md`: added optional `kind` and `sources: []`.
+- `templates/skill.md`: new skill SOP template.
+- `SKILL.md`: version 0.4.0; hard rules for kind; classification + protocol
+  (recall budget, distill, skill capture); `new --kind` in ops reference.
+- `install/adapters/_protocol.md`: aligned with SKILL protocol sections 1-6.
+- `scripts/lib/fs.sh` `mmfs_new`: optional kind, `sources: []`, skill heat
+  growing.
+- `scripts/memovault.sh`: `new --kind`; usage updated.
+- `install/install.sh`: scaffold copies `skill` template.
+- `docs/ARCHITECTURE.md` section 10 layered memory; extension points -> 11.
+- `docs/DEVELOPMENT.md`: kinds orthogonal to vector phase.
+- `VERSION` -> 0.4.0.
+
+### Review
+- `bash -n` passes on `scripts/memovault.sh`, `scripts/lib/fs.sh`,
+  `install/install.sh`.
+- `new skills "..." --kind skill` writes `kind: skill`, `heat: growing`,
+  `sources: []`. `new ... --kind atom` writes `kind: atom`, `heat: seedling`.
+- `./install/install.sh --upgrade --force-fs --no-pull --all --force`:
+  0.3.1 -> 0.4.0; `--verify` OK for all agents.
+- Cursor/Claude injected protocol contains recall budget, distill, and skill
+  capture sections. Vault scaffold includes `templates/skill.md`.
+- No emoji. Naming contract: no new public env vars; `kind`/`sources` are vault
+  frontmatter only.
+
+## 11. Entry: fs daily note resolution for distill provenance (2026-08-03)
+
+### Research
+- Self-test of MemoVault 0.4.0 layered memory: distill trial wrote
+  `[[2026-08-03]]` and `sources: [2026-08-03]`, plus a daily pointer to the
+  atom. File writes succeeded; graph partially worked.
+- Root cause in `scripts/lib/fs.sh`:
+  - `mmfs_find_note` / `mmfs_locate` (title form) only search `brain/`.
+  - `mmfs_unresolved` only treats a target as resolved if `brain/**/$target.md`
+    exists.
+  - `mmfs_graph` only scans `brain/**/*.md` for outgoing `[[links]]`, so links
+    *from* daily notes are invisible to orphans/unresolved edge building.
+  - `mmfs_backlinks` already rg's the whole `$MM_VAULT`, so daily→atom backlinks
+    can appear while `unresolved` still lists `2026-08-03`.
+  - `read "2026-08-03"` fails; `read "daily/2026-08-03.md"` works (path form).
+  - Daily files are created with frontmatter `created:` only (no `title:`);
+    filename stem is the natural Obsidian daily title.
+- Protocol (Entry 10) requires distill to wikilink back to raw/daily evidence.
+  That contract is broken under forced fs mode (this machine's default).
+
+### Innovate
+- A) Protocol-only: mandate `[[daily/YYYY-MM-DD]]` path wikilinks. Rejected as
+  sole fix — Obsidian-native daily links are `[[YYYY-MM-DD]]`, and agents will
+  keep emitting date titles.
+- B) Helper resolves date titles and daily paths; unresolved/graph include
+  `daily/`. Chosen. Matches Obsidian expectations and Entry 10 distill text.
+- C) Move dailies under `brain/daily/`. Rejected — breaks existing vault layout
+  and Obsidian daily-notes convention (`daily/` at vault root).
+- Scope: fs layer + daily template/frontmatter + short protocol clarification.
+  No cli-mode changes beyond docs (cli unresolved is Obsidian-native).
+
+### Plan (approved via user "批准")
+
+**Goal:** Make `[[YYYY-MM-DD]]` (and `daily/YYYY-MM-DD.md`) first-class in fs
+mode so distill provenance closes the loop.
+
+**Version:** bump `0.4.0` -> `0.4.1` (bugfix).
+
+#### A. `scripts/lib/fs.sh`
+
+1. **`mmfs_find_note`**: after brain search, if
+   `$MM_VAULT/daily/$title.md` exists, print it. Prefer brain on name collision
+   (unlikely for ISO dates).
+2. **`mmfs_locate`**: keep existing absolute / vault-relative path handling
+   (already covers `daily/YYYY-MM-DD.md`). Optionally normalize bare
+   `daily/YYYY-MM-DD` (no `.md`) to the file if present — nice-to-have in same
+   change if cheap.
+3. **`mmfs_graph`**: scan both `brain/` and `daily/` for outgoing `[[links]]`.
+4. **`mmfs_unresolved`**: a target is resolved if any of:
+   - `brain/**/$target.md` exists, or
+   - `daily/$target.md` exists, or
+   - `$MM_VAULT/$target` or `$MM_VAULT/$target.md` exists (path-style links).
+5. **`mmfs_daily` / create path**: when creating a new daily file, write
+   `title: YYYY-MM-DD` in frontmatter (keep `created:`). Do not bulk-rewrite
+   historical dailies in this entry.
+
+#### B. Templates / docs / protocol
+
+- `templates/daily.md`: add `title: {{date}}`.
+- `docs/CLASSIFICATION.md` daily section: canonical distill link is
+  `[[YYYY-MM-DD]]`; path form `daily/YYYY-MM-DD.md` also works with `read`/
+  `locate`.
+- `SKILL.md` distill bullet: same one-line clarification.
+- `_protocol.md` distill bullet: same.
+- `docs/ARCHITECTURE.md` fs graph/unresolved row: note daily is included.
+- `docs/RIPER.md`: this entry; Execute/Review after approval.
+
+#### C. Live vault hygiene (this machine, as part of Review)
+
+- Ensure `daily/2026-08-03.md` is no longer listed by `unresolved` for target
+  `2026-08-03`.
+- `read "2026-08-03"` returns the daily note.
+- Trial atom `MemoVault distill trial atom` remains valid evidence (optional:
+  add `title` to that daily's frontmatter by hand if missing).
+
+#### D. Out of scope
+
+- Migrating all historical daily frontmatter.
+- Changing orphans to list daily files as candidates.
+- cli-mode Obsidian unresolved behavior.
+- Auto-rewrite of existing `[[daily/...]]` path links.
+
+#### E. Review checklist
+
+- `bash -n scripts/lib/fs.sh`
+- `read "2026-08-03"` / `unresolved` no longer reports that date when the file
+  exists
+- Brain-only unresolved targets still reported
+- No emoji; VERSION 0.4.1; `install.sh --upgrade --force-fs --no-pull` (+
+  reinject if protocol text changed)
+
+### Execute
+- `scripts/lib/fs.sh`: `mmfs_find_note` checks `daily/`; `mmfs_locate` accepts
+  vault-relative paths without `.md`; `mmfs_graph` scans brain+daily;
+  `mmfs_target_exists` + `mmfs_unresolved`; new dailies get `title:`.
+- `templates/daily.md`: `title: {{date}}`.
+- `docs/CLASSIFICATION.md`, `SKILL.md`, `_protocol.md`, `ARCHITECTURE.md`
+  updated for canonical `[[YYYY-MM-DD]]`.
+- `VERSION` / SKILL frontmatter -> 0.4.1.
+
+### Review
+- `bash -n scripts/lib/fs.sh` passes.
+- `read "2026-08-03"` and `read "daily/2026-08-03"` both return the daily note.
+- `unresolved` no longer lists `2026-08-03`; remaining hits are pre-existing
+  non-daily targets.
+- `orphans` no longer lists `MemoVault distill trial atom` (daily outgoing link
+  now in graph); `backlinks` shows `daily/2026-08-03.md`.
+- Upgraded this machine 0.4.0 -> 0.4.1 with `--force-fs --no-pull --all --force`;
+  protocol stubs mention canonical `[[YYYY-MM-DD]]`.
+- No emoji; no new public env vars.
+
+### 2026-08-03 - 端到端测试（hybrid harness + agentic skill）
+- Research: 确认无既有测试；helper 命令面与 cli 注册依赖；规格见 docs/superpowers/specs/2026-08-03-e2e-testing-design.md
+- Innovate: 纯 skill / 纯 bash / 混合 → 选混合；隔离 vault + 临时注册满足双模式
+- Plan: docs/superpowers/plans/2026-08-03-e2e-testing.md（已批准）
+- Execute: scripts/e2e/* + skills/testing-memovault/SKILL.md + DEVELOPMENT/RIPER 指针
+- Review: FS 阶段 35/35 通过；CLI 阶段因 Obsidian 未运行于 preflight 失败（`./scripts/e2e/run.sh` exit 1）；另：当 Obsidian 运行但 vault 未在 GUI 打开时，`cli rename updated wikilink` 仍可能失败（Obsidian CLI 产品行为）；生产 vault 无 E2E STEM 污染；完整双模式需在 Obsidian 运行时再验收

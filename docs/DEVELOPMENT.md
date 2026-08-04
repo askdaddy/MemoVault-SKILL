@@ -66,6 +66,10 @@ canonical `SKILL.md` lives). Pass `--inline` to `install.sh` to embed the full
 
 Goal: add `search:vector "<query>"` that returns semantically similar notes.
 
+Note: optional frontmatter `kind` / `sources` (layered memory protocol) are
+orthogonal to this phase. Vector search may later weight by `heat` / `kind`, but
+kinds work with full-text `search` alone.
+
 Reserved seam:
 - A new `scripts/lib/vec.sh` behind the same dispatcher in `memovault.sh`.
 - An index stored under `$AGENT_MEMO_VAULT/.memovault/vec/` (gitignored concept;
@@ -84,16 +88,21 @@ Constraints to honor when built:
 - Keep full text `search`, `tags`, and `backlinks` as the always-available path.
 - Respect the no-emoji and never-write-outside-vault rules.
 
-## 6. Testing
+## 6. 测试
 
-There is no test harness in v0.1. Manual checklist before shipping a change:
+端到端验收（官方门禁：fs + cli 双模式）：
 
-1. `bash -n scripts/memovault.sh scripts/lib/*.sh install/install.sh` parses.
-2. `./scripts/memovault.sh preflight` reports mode correctly with app running and
-   stopped.
-3. `new` then `read` then `search` round trips in both `cli` and `fs` modes.
-4. `promote` updates `heat` and `updated` without corrupting frontmatter.
-5. A path like `../escape` is rejected.
+1. 设计规格：`docs/superpowers/specs/2026-08-03-e2e-testing-design.md`
+2. 机械入口：`./scripts/e2e/run.sh`（`--keep` 留给 protocol 跟测）
+3. Agent 编排：`skills/testing-memovault/SKILL.md`
+
+快速语法检查仍可用：
+
+```bash
+bash -n scripts/memovault.sh scripts/lib/*.sh install/install.sh
+```
+
+注意：不要对生产 vault `~/.agent-memo-vault` 跑 e2e；harness 使用隔离临时目录。
 
 ## 7. Versioning
 

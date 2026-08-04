@@ -24,11 +24,21 @@ mmfs_sanitize_title() {
   printf '%s' "$t"
 }
 
-# Find a note by its title (filename stem) under brain/. Print path or empty.
+# Find a note by its title (filename stem) under brain/, then daily/.
+# Prefer brain on name collision. Print path or empty.
 mmfs_find_note() {
   local title; title="$(mmfs_sanitize_title "$1")"
-  [ -d "$MM_VAULT/brain" ] || return 0
-  find "$MM_VAULT/brain" -type f -name "$title.md" 2>/dev/null | head -n1
+  local hit=""
+  if [ -d "$MM_VAULT/brain" ]; then
+    hit="$(find "$MM_VAULT/brain" -type f -name "$title.md" 2>/dev/null | head -n1)"
+  fi
+  if [ -n "$hit" ]; then
+    printf '%s' "$hit"
+    return 0
+  fi
+  if [ -f "$MM_VAULT/daily/$title.md" ]; then
+    printf '%s' "$MM_VAULT/daily/$title.md"
+  fi
 }
 
 # Resolve a user supplied reference (title or path) to an absolute file path.
@@ -42,6 +52,11 @@ mmfs_locate() {
   fi
   if [ -f "$MM_VAULT/$arg" ]; then
     printf '%s' "$MM_VAULT/$arg"
+    return 0
+  fi
+  # Allow vault-relative paths without .md (e.g. daily/2026-08-03).
+  if [ -f "$MM_VAULT/$arg.md" ]; then
+    printf '%s' "$MM_VAULT/$arg.md"
     return 0
   fi
   mmfs_find_note "$arg"
@@ -74,23 +89,33 @@ mmfs_yaml_list() {
   printf ']'
 }
 
-# Create a new note. Usage: mmfs_new <domain> <title> [tags_csv] [body]
+# Create a new note. Usage: mmfs_new <domain> <title> [tags_csv] [body] [kind]
 mmfs_new() {
-  local domain="$1" title="$2" tags="${3:-}" body="${4:-}"
+  local domain="$1" title="$2" tags="${3:-}" body="${4:-}" kind="${5:-}"
   [ -n "$domain" ] && [ -n "$title" ] || { mm_die "usage: new <domain> <title>"; }
+  if [ -n "$kind" ]; then
+    case "$kind" in
+      raw|atom|scenario|persona|skill) ;;
+      *) mm_die "invalid kind: $kind (raw|atom|scenario|persona|skill)" ;;
+    esac
+  fi
   mmfs_ensure_vault
   mkdir -p "$MM_VAULT/brain/$domain"
   local file; file="$(mmfs_note_path "$domain" "$title")"
   [ -f "$file" ] && mm_die "note already exists: $title ($file). Use append instead."
   local today; today="$(mmfs_today)"
   local title_clean; title_clean="$(mmfs_sanitize_title "$title")"
+  local heat="seedling"
+  [ "$kind" = skill ] && heat="growing"
   {
     printf -- '---\n'
     printf 'title: %s\n' "$title_clean"
     printf 'domain: %s\n' "$domain"
+    [ -n "$kind" ] && printf 'kind: %s\n' "$kind"
     printf 'tags: %s\n' "$(mmfs_yaml_list "$tags")"
-    printf 'heat: seedling\n'
+    printf 'heat: %s\n' "$heat"
     printf 'aliases: []\n'
+    printf 'sources: []\n'
     printf 'created: %s\n' "$today"
     printf 'updated: %s\n' "$today"
     printf -- '---\n\n'
@@ -143,9 +168,10 @@ mmfs_daily_path() {
 
 mmfs_daily() {
   local f; f="$(mmfs_daily_path)"
+  local today; today="$(mmfs_today)"
   mkdir -p "$(dirname "$f")"
   [ -f "$f" ] || {
-    printf -- '---\ncreated: %s\n---\n\n# %s\n\n' "$(mmfs_today)" "$(mmfs_today)" > "$f"
+    printf -- '---\ntitle: %s\ncreated: %s\n---\n\n# %s\n\n' "$today" "$today" "$today" > "$f"
   }
   cat "$f"
 }
@@ -264,17 +290,14 @@ mmfs_links() {
 }
 
 # Emit graph edges: "LINK<TAB>src_rel<TAB>target_text"
+# Scans brain/ and daily/ so distill pointers from daily notes count.
 mmfs_graph() {
   local f
-  [ -d "$MM_VAULT/brain" ] || return 0
-  find "$MM_VAULT/brain" -type f -name '*.md' 2>/dev/null | while read -r f; do
-    local rel="${f#"$MM_VAULT"/}"
-    grep -oE '\[\[[^]]+\]\]' "$f" 2>/dev/null \
-      | sed -E 's/^\[\[//; s/\]\]$//; s/\|.*$//' \
-      | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'
-    # re-scan to pair with src (awk is cleaner here)
-  done >/dev/null
-  find "$MM_VAULT/brain" -type f -name '*.md' 2>/dev/null | while read -r f; do
+  {
+    [ -d "$MM_VAULT/brain" ] && find "$MM_VAULT/brain" -type f -name '*.md' 2>/dev/null
+    [ -d "$MM_VAULT/daily" ] && find "$MM_VAULT/daily" -type f -name '*.md' 2>/dev/null
+  } | while read -r f; do
+    [ -n "$f" ] || continue
     local rel="${f#"$MM_VAULT"/}"
     awk -v src="$rel" '
       {
@@ -307,12 +330,28 @@ mmfs_orphans() {
   rm -f "$tmp"
 }
 
+# Return 0 if target text resolves to an existing vault note (brain, daily, or path).
+mmfs_target_exists() {
+  local target="$1"
+  [ -n "$target" ] || return 1
+  if find "$MM_VAULT/brain" -type f -name "$target.md" 2>/dev/null | grep -q .; then
+    return 0
+  fi
+  if [ -f "$MM_VAULT/daily/$target.md" ]; then
+    return 0
+  fi
+  if [ -f "$MM_VAULT/$target" ] || [ -f "$MM_VAULT/$target.md" ]; then
+    return 0
+  fi
+  return 1
+}
+
 mmfs_unresolved() {
   local tmp; tmp="$(mktemp)"
   mmfs_graph > "$tmp" 2>/dev/null
   cut -f3 "$tmp" 2>/dev/null | sort -u | while read -r target; do
     [ -n "$target" ] || continue
-    if ! find "$MM_VAULT/brain" -type f -name "$target.md" 2>/dev/null | grep -q .; then
+    if ! mmfs_target_exists "$target"; then
       printf '%s\n' "$target"
     fi
   done

@@ -147,7 +147,7 @@ mm_scaffold_vault() {
   if [ "$DRY_RUN" = 1 ]; then return 0; fi
   mkdir -p "$VAULT/brain" "$VAULT/daily" "$VAULT/templates"
   local t
-  for t in note daily moc; do
+  for t in note daily moc skill; do
     [ -f "$VAULT/templates/$t.md" ] || cp "$ROOT/templates/$t.md" "$VAULT/templates/$t.md" 2>/dev/null || true
   done
 }

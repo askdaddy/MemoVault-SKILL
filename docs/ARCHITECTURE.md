@@ -106,7 +106,7 @@ binary on PATH is actually the GUI app, or the agent must not open windows), set
 | `tags` / `tag` | `obsidian tags counts` / `obsidian tag name=` | scan `^tags:` lines |
 | `backlinks` | `obsidian backlinks file= counts format=json` | `rg -n "\[\[Title"` |
 | `links` | `obsidian links file=` | scan outgoing `[[...]]` |
-| `orphans` / `unresolved` | `obsidian orphans` / `obsidian unresolved` | graph scan over `[[...]]` |
+| `orphans` / `unresolved` | `obsidian orphans` / `obsidian unresolved` | fs: graph scan of `[[...]]` in `brain/` + `daily/`; unresolved also treats `daily/YYYY-MM-DD.md` (and vault-relative paths) as resolved |
 | `move` / `rename` | `obsidian move` / `obsidian rename` (links auto update) | `mv` only; links may break |
 | `promote` | `obsidian property:set name=heat value=...` + `updated` | awk edit frontmatter |
 | `moc` | list domain files, group by heat, write index | same, fs write |
@@ -175,9 +175,22 @@ The installed `VERSION` is compared to the dev repo `VERSION` with `mm_vercmp`
 The helper's `upgrade` subcommand simply `exec`s `install.sh --upgrade`, so the
 installer is the single code path for both fresh install and upgrade.
 
-## 10. Extension points
+## 10. Layered memory (protocol)
+
+MemoVault does not run an async L0-L3 pipeline. Layering is a **protocol +
+frontmatter** convention on the same markdown vault:
+
+- Optional `kind`: `raw` | `atom` | `scenario` | `persona` | `skill`
+- Optional `sources: []` plus body `[[wikilinks]]` for provenance
+- Recall budget and heat/kind ranking live in `SKILL.md` / `_protocol.md`
+- Spec: `docs/CLASSIFICATION.md` (Memory kinds)
+
+No new runtime layer, daemon, or parallel store. Full-text `search` remains the
+default path; vector search stays reserved (section 11 / DEVELOPMENT.md).
+
+## 11. Extension points
 
 - Vector search: a new `lib/vec.sh` plus a `search:vector` subcommand, behind the
-  same dispatch. See `DEVELOPMENT.md`.
+  same dispatch. Orthogonal to `kind` / `sources`. See `DEVELOPMENT.md`.
 - New agents: add an entry to `install/targets.sh` and a stub in
   `install/adapters/`. See `DEVELOPMENT.md` and `INSTALL.md`.

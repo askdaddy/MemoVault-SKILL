@@ -216,15 +216,16 @@ mm_preflight() {
 
 mm_cmd_new() {
   local domain="$1" title="$2"; shift 2 2>/dev/null || true
-  local tags="" body=""
+  local tags="" body="" kind=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --tags) tags="$2"; shift 2 ;;
       --body) body="$2"; shift 2 ;;
+      --kind) kind="$2"; shift 2 ;;
       *) shift ;;
     esac
   done
-  mmfs_new "$domain" "$title" "$tags" "$body"
+  mmfs_new "$domain" "$title" "$tags" "$body" "$kind"
 }
 
 # Upgrade: delegate to install.sh --upgrade. The installer re-syncs the source
@@ -248,7 +249,7 @@ Resolve:
                                 (delegates to install.sh --upgrade)
 
 Capture / edit:
-  new <domain> <title> [--tags a,b] [--body "text"]
+  new <domain> <title> [--tags a,b] [--kind atom] [--body "text"]
   append <note> "<markdown>"
   prepend <note> "<markdown>"   (inserted after frontmatter)
   read <note>

@@ -29,9 +29,11 @@ queries do not depend on the path.
 ---
 title: Human Readable Title
 domain: engineering
+kind: atom                 # optional; see section 3
 tags: [rust, async]
 heat: seedling
 aliases: [Short Name]
+sources: []                # optional; fill when distilled from raw/daily
 created: 2026-07-13
 updated: 2026-07-13
 ---
@@ -40,23 +42,50 @@ updated: 2026-07-13
 Field rules:
 - `title` - human readable, unique in the vault. Matches the filename stem.
 - `domain` - lowercase, single token or `kebab-case`. Matches the folder name.
+- `kind` - optional. One of `raw`, `atom`, `scenario`, `persona`, `skill`.
+  Omit to keep ordinary domain-note behavior.
 - `tags` - YAML list. Nested tags use `parent/child` (e.g. `lang/rust`).
 - `heat` - exactly one of `seedling`, `growing`, `evergreen`.
 - `aliases` - YAML list of alternate names; enables `[[Short Name]]` resolution.
+- `sources` - optional YAML list of note titles or vault-relative paths that
+  evidence this note. Required when distilling from raw/daily into a structured
+  note. Also add `[[wikilinks]]` in the body so the graph stays connected.
 - `created` / `updated` - ISO date. `updated` is bumped on edits.
 
-## 3. Domains
+## 3. Memory kinds (optional)
+
+Optional `kind` maps layered memory onto the existing vault without a second
+folder tree. Inspired by L0-L3 + Skill assets; recall prefers higher structure.
+
+| `kind` | Role | Typical home | Default heat on `new` |
+|---|---|---|---|
+| `raw` | Fleeting evidence (L0) | `daily/` or `brain/inbox/` | seedling |
+| `atom` | Fact, decision, constraint (L1) | `brain/<domain>/` | seedling |
+| `scenario` | Project or scene block (L2) | `brain/<domain>/` + MOCs | seedling |
+| `persona` | Stable preference / hard constraint (L3) | rare domain notes | seedling |
+| `skill` | Reusable SOP (Trigger / Steps / Verify) | `brain/skills/` | growing |
+
+Rules:
+- Omit `kind` when unsure; treat as an ordinary domain note.
+- Distill raw/daily into `atom` or `scenario`; set `sources` and body wikilinks.
+- Never delete raw evidence without explicit user consent.
+- `persona` stays rare. Do not start as `evergreen` unless the user confirms;
+  otherwise seedling, then suggest `promote`.
+- Skill notes use `templates/skill.md` body sections.
+
+## 4. Domains
 
 A domain is a stable area of knowledge. Examples: `engineering`, `product`,
-`research`, `ops`, `reading`, `people`, `projects/<name>`.
+`research`, `ops`, `reading`, `people`, `skills`, `projects/<name>`.
 
 Rules:
 - Keep the set small and stable. Prefer folding into an existing domain over
   creating a new one.
 - Domain folder name == `domain` frontmatter value.
 - Every domain has a MOC index note (`moc <domain>` regenerates it).
+- Skill SOPs live under `brain/skills/` (`domain: skills`).
 
-## 4. Heat tiers
+## 5. Heat tiers
 
 | Tier | Meaning | Typical signals |
 |---|---|---|
@@ -69,7 +98,7 @@ Promotion rules:
 - Promotion bumps `heat` and `updated`.
 - Demotion is manual only (the agent never demotes on its own).
 
-## 5. MOC (Map of Content)
+## 6. MOC (Map of Content)
 
 `moc <domain>` writes `brain/<domain>/_<domain>-MOC.md`:
 
@@ -95,21 +124,26 @@ aliases: [<Domain> index]
 
 The MOC is regenerated on demand; it is not hand edited.
 
-## 6. Daily notes
+## 7. Daily notes
 
 `daily/YYYY-MM-DD.md`. Used for time based capture (log lines, tasks, fleeting
-notes). Daily notes may later be refined into domain notes; the agent should
-offer to promote a daily entry into a `seedling` domain note when it contains
-reusable knowledge.
+notes). Treat as L0 / `kind: raw` evidence. When an entry holds reusable
+knowledge, distill into an `atom` or `scenario` domain note with `sources` and
+wikilinks back to the daily note; optionally leave a one-line pointer on
+the daily note.
 
-## 7. Naming conventions
+Canonical distill link: `[[YYYY-MM-DD]]` (Obsidian daily title = filename stem).
+Path form `daily/YYYY-MM-DD.md` also works with `read` / `locate`. In fs mode the
+helper resolves both; `unresolved` treats an existing daily file as resolved.
+
+## 8. Naming conventions
 
 - Note filenames: human readable Title Case, matching the `title` field. Avoid
   slashes and colons (filesystem and Obsidian constraints).
 - Daily filenames: `YYYY-MM-DD.md`.
 - Slugs in tags/domains: lowercase `kebab-case`.
 
-## 8. Deduplication
+## 9. Deduplication
 
 Before creating a note, the agent must `search` and check `backlinks`/`aliases`
 for an existing note. If a match exists, `append` to it instead of creating a

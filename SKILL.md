@@ -1,7 +1,7 @@
 ---
 name: memovault
-version: 0.3.1
-description: "Sink knowledge into a local Obsidian vault with bash. Use when the user wants to capture, save, record, or sink knowledge, notes, learnings, decisions, meeting takeaways, code snippets, or research into their memo vault / second brain / Obsidian knowledge base; or to create, edit, link, search, classify by domain, promote by heat, or maintain backlinks and daily notes. Trigger phrases: 记到笔记 / 记一下 / 笔记里记一下 / 沉淀 / 沉淀一下 / 存到 vault / 存一下 / 存档 / 存到知识库 / 知识库 / 备忘录 / 双链 / 回链 / 按领域归档 / 提升热度 / 日记 / 每日笔记 / remember this / save this / save to vault / save to notes / memo it / note this / capture this / second brain / knowledge base / daily note / backlinks / link this note."
+version: 0.4.1
+description: "Sink knowledge into a local Obsidian vault with bash. Use when the user wants to capture, save, record, or sink knowledge, notes, learnings, decisions, meeting takeaways, code snippets, or research into their memo vault / second brain / Obsidian knowledge base; or to create, edit, link, search, classify by domain, promote by heat, distill raw notes, or maintain backlinks, daily notes, and skill SOPs. Trigger phrases: 记到笔记 / 记一下 / 笔记里记一下 / 沉淀 / 沉淀一下 / 存到 vault / 存一下 / 存档 / 存到知识库 / 知识库 / 备忘录 / 双链 / 回链 / 按领域归档 / 提升热度 / 日记 / 每日笔记 / remember this / save this / save to vault / save to notes / memo it / note this / capture this / second brain / knowledge base / daily note / backlinks / link this note."
 ---
 
 # MemoVault
@@ -19,6 +19,7 @@ directories are pointer stubs that redirect here.
 - Never write outside the vault (`$AGENT_MEMO_VAULT`, default `~/.agent-memo-vault`).
 - Always run preflight before the first vault operation in a session.
 - Heat values are exactly one of: `seedling`, `growing`, `evergreen`.
+- Optional `kind` is exactly one of: `raw`, `atom`, `scenario`, `persona`, `skill`.
 - Confirm with the user before deleting or bulk moving notes.
 
 ## 1. Resolve the vault and the helper
@@ -103,9 +104,11 @@ Every note carries frontmatter:
 ---
 title: Human Readable Title
 domain: <area>            # one domain; maps to a folder under brain/<domain>/
+kind: atom                 # optional: raw | atom | scenario | persona | skill
 tags: [tag-a, tag-b]       # freeform; nested tags allowed as parent/child
 heat: seedling             # seedling | growing | evergreen
 aliases: []                # alternate names; improves [[wikilink]] resolution
+sources: []                # optional; required when distilled from raw/daily
 created: 2026-07-13
 updated: 2026-07-13
 ---
@@ -113,6 +116,9 @@ updated: 2026-07-13
 
 - **Domain**: the primary area. Stored both as a folder (`brain/<domain>/`) and
   as the `domain` property so search works without path assumptions.
+- **Kind** (optional): layered memory role. Prefer `atom`/`scenario`/`skill`/
+  `persona` over `raw` when recalling. Skill SOPs live under `brain/skills/`.
+  See `docs/CLASSIFICATION.md`.
 - **Heat**: maturity/popularity.
   - `seedling` - just captured, unrefined.
   - `growing` - linked to other notes, being developed.
@@ -146,7 +152,7 @@ All subcommands are invoked as `"$MM" <subcommand> [args...]`. They auto select
 
 ```bash
 # New note in a domain (creates frontmatter, places under brain/<domain>/)
-"$MM" new <domain> "<Title>" [--tags a,b] [--body "initial text"]
+"$MM" new <domain> "<Title>" [--tags a,b] [--kind atom] [--body "initial text"]
 
 # Append / prepend / read an existing note (by title or path)
 "$MM" append "<Title>" "<markdown to add>"
@@ -210,18 +216,23 @@ This skill is meant to be always on, not only triggered by an explicit
 ### Recall (automatic)
 
 At the start of answering a user request:
-1. Run `search "<narrow keywords>"` against the vault.
-2. If a hit is relevant, `read` it and weave the knowledge into your answer.
-3. If the vault is empty or nothing matches, skip silently (do not narrate).
-Keep it cheap: one search per task.
+1. Run one `search "<narrow keywords>"` (prefer `--limit 10` or tighter).
+2. Rank hits: prefer `heat: evergreen` then `growing`; prefer
+   `kind: persona|scenario|skill|atom` over `raw` / pure `daily/` noise.
+3. Progressive disclosure: use titles/snippets first; `read` at most **3** notes
+   per task (usually 1). Weave relevant knowledge into the answer and cite the
+   vault note when it materially affects the answer.
+4. If the vault is empty or nothing matches, skip silently (do not narrate).
 
 ### Capture (semi-automatic)
 
 When the turn produced durable knowledge (a decision, fix or lesson, how-to,
 design rationale, or non-obvious fact):
-1. Propose first: "I can save this to <domain>/<title>, linking [[related]]. Do it?"
-2. On confirmation: `new <domain> "<title>" --tags ... --body "..."`, then add
-   `[[wikilinks]]` and short `aliases`. New notes start `heat: seedling`.
+1. Propose first: "I can save this to <domain>/<title> (kind: atom|scenario),
+   linking [[related]]. Do it?"
+2. On confirmation: `new <domain> "<title>" --kind atom --tags ... --body "..."`,
+   then add `[[wikilinks]]` and short `aliases`. Default heat is `seedling`
+   (`skill` notes default to `growing`).
 3. If the user explicitly says "remember this" / "save this" / "note this" /
    "capture this" / "记一下" / "记下来" / "帮我记一下" / "沉淀一下" /
    "存一下" / "存到笔记" / "记到知识库", capture
@@ -229,16 +240,38 @@ design rationale, or non-obvious fact):
 4. Do not capture small talk, transient debug output, or anything not worth
    searching for later.
 
+### Distill and provenance
+
+- Raw capture (`daily/` lines, `kind: raw`, or inbox) is L0 evidence, not the
+  end state.
+- When durable knowledge appears, create or update an `atom` or `scenario` note.
+  Set `sources: ["YYYY-MM-DD"]` (or note titles) **and** body wikilinks back to
+  the raw note. Canonical daily link: `[[YYYY-MM-DD]]` (path form
+  `daily/YYYY-MM-DD.md` also works with `read` / `locate`).
+- Optionally leave a one-line pointer on the daily note linking to the new atom.
+- Never delete raw evidence without explicit user consent.
+- `kind: persona` is rare (stable preferences / hard constraints). Do not start
+  as `evergreen` unless the user confirms; otherwise seedling and suggest
+  `promote` later.
+
+### Skill capture (SOPs)
+
+When the turn produced a reusable how-to that would save future turns:
+1. Propose `skills/<Title>` with `--kind skill`, or write immediately on explicit
+   remember phrases.
+2. Structure the body like `templates/skill.md`: Trigger, Steps, Verify, Related.
+3. Link related domain atoms/scenarios with `[[wikilinks]]`.
+
 ## 7. Suggested capture flow
 
 1. `preflight` once.
-2. Decide the domain and a concise human readable title.
+2. Decide the domain, optional `kind`, and a concise human readable title.
 3. `search "<keywords>"` and `backlinks` to check for an existing note; prefer to
    `append` to an existing note over creating a duplicate.
-4. `new <domain> "<Title>"` with `--tags`, then `append` the body, or pass
-   `--body`.
-5. Add `[[wikilinks]]` to related notes; create the linked note as `seedling` if
-   it does not exist yet.
+4. `new <domain> "<Title>"` with `--tags` and optional `--kind`, then `append`
+   the body, or pass `--body`.
+5. Add `[[wikilinks]]` and `sources` when distilling; create linked notes as
+   `seedling` if they do not exist yet.
 6. If the note is clearly important, suggest `promote`.
 
 ## 8. fs mode notes

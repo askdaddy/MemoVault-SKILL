@@ -1,6 +1,6 @@
 ---
 name: testing-memovault
-description: "Use when verifying MemoVault end-to-end, running the memovault e2e suite, checking fs and cli mode parity, or validating the memory protocol against an isolated vault."
+description: "Use when verifying MemoVault end-to-end, running the memovault e2e suite, or validating the memory protocol against an isolated vault."
 ---
 
 # testing-memovault
@@ -11,14 +11,15 @@ description: "Use when verifying MemoVault end-to-end, running the memovault e2e
 
 - 只测仓库内 helper：`./scripts/memovault.sh`（或 `scripts/e2e/run.sh` 封装）。
 - 绝不把 `AGENT_MEMO_VAULT` 设为 `~/.agent-memo-vault`。
-- 官方门禁必须双模式；不要对官方验收使用 `--fs-only` / `--cli-only`。
+- 官方门禁为单阶段 shell；不要对官方验收使用 `--fs-only`（它已是 no-op 兼容别名）。
+- 运行时不再依赖 Obsidian 桌面端或 `obsidian` CLI；Obsidian 仅用于人浏览 vault。
 - 无 emoji。
 
 ## 前置
 
 - 当前工作目录为 MemoVault-SKILL 仓库根。
-- Obsidian 桌面端运行中，且 PATH 上有可用的 `obsidian` CLI（否则 harness 会整体 FAIL，属预期）。
-- 需要 `jq`（cli 阶段注册 vault）。
+- PATH 上有 `rg` 或 `grep`（搜索后端自动探测）。
+- 不需要 `jq`、不需要 Obsidian 运行。
 
 ## 步骤 A — 机械 harness
 
@@ -32,7 +33,6 @@ description: "Use when verifying MemoVault end-to-end, running the memovault e2e
 
 ```bash
 export AGENT_MEMO_VAULT="$E2E_VAULT"
-export MM_FORCE_FS=1
 MM=./scripts/memovault.sh
 ```
 
@@ -53,8 +53,7 @@ MM=./scripts/memovault.sh
 repo: <path>
 date: <ISO date>
 harness: PASS|FAIL
-  fs: PASS|FAIL
-  cli: PASS|FAIL
+  shell: PASS|FAIL
   asserts_pass: <n>
   asserts_fail: <n>
 protocol: PASS|FAIL|SKIP

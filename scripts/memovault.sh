@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # memovault.sh - MemoVault entry point.
-# Preflight + runtime mode detection + subcommand dispatch.
-# Pure local filesystem skill. Uses the official Obsidian CLI when the desktop
-# app is running; falls back to plain filesystem operations otherwise.
+# Preflight + subcommand dispatch. Pure local filesystem skill (shell-only
+# runtime): all operations read and write markdown directly under
+# $AGENT_MEMO_VAULT. The official Obsidian CLI is no longer a runtime
+# dependency; Obsidian is only for humans browsing the vault.
 # No emoji. Never writes outside $AGENT_MEMO_VAULT.
 
 set -uo pipefail
@@ -93,118 +94,33 @@ MM_VAULT="${AGENT_MEMO_VAULT:-$HOME/.agent-memo-vault}"
 
 # shellcheck source=lib/fs.sh
 . "$MM_ROOT/lib/fs.sh"
-# shellcheck source=lib/cli.sh
-. "$MM_ROOT/lib/cli.sh"
+# shellcheck source=lib/rewrite.sh
+. "$MM_ROOT/lib/rewrite.sh"
 # shellcheck source=lib/classify.sh
 . "$MM_ROOT/lib/classify.sh"
 
-mmcli_detect   # sets MM_OBSIDIAN, MM_APP_RUNNING, MM_MODE
-
-# --- wrappers with cli -> fs fallback -------------------------------------
-
-mm_w_search() {
-  local q="$1"; shift
-  if [ "$MM_MODE" = cli ]; then
-    local out rc
-    out="$(mmcli_search "$q" "$@" 2>/dev/null)"; rc=$?
-    if [ $rc -eq 0 ]; then printf '%s\n' "$out"; return 0; fi
-    mm_log "obsidian search failed, using fs" >&2
-  fi
-  mmfs_search "$q" "$@"
-}
-
-mm_w_tags() {
-  if [ "$MM_MODE" = cli ]; then
-    local out rc; out="$(mmcli_tags 2>/dev/null)"; rc=$?
-    if [ $rc -eq 0 ]; then printf '%s\n' "$out"; return 0; fi
-    mm_log "obsidian tags failed, using fs" >&2
-  fi
-  mmfs_tags
-}
-
-mm_w_tag() {
-  local tag="$1"
-  if [ "$MM_MODE" = cli ]; then
-    local out rc; out="$(mmcli_tag "$tag" 2>/dev/null)"; rc=$?
-    if [ $rc -eq 0 ]; then printf '%s\n' "$out"; return 0; fi
-    mm_log "obsidian tag failed, using fs" >&2
-  fi
-  mmfs_tag "$tag"
-}
-
-mm_w_backlinks() {
-  local ref="$1"
-  if [ "$MM_MODE" = cli ]; then
-    local out rc; out="$(mmcli_backlinks "$ref" 2>/dev/null)"; rc=$?
-    if [ $rc -eq 0 ]; then printf '%s\n' "$out"; return 0; fi
-    mm_log "obsidian backlinks failed, using fs" >&2
-  fi
-  mmfs_backlinks "$ref"
-}
-
-mm_w_links() {
-  local ref="$1"
-  if [ "$MM_MODE" = cli ]; then
-    local out rc; out="$(mmcli_links "$ref" 2>/dev/null)"; rc=$?
-    if [ $rc -eq 0 ]; then printf '%s\n' "$out"; return 0; fi
-    mm_log "obsidian links failed, using fs" >&2
-  fi
-  mmfs_links "$ref"
-}
-
-mm_w_orphans() {
-  if [ "$MM_MODE" = cli ]; then
-    local out rc; out="$(mmcli_orphans 2>/dev/null)"; rc=$?
-    if [ $rc -eq 0 ]; then printf '%s\n' "$out"; return 0; fi
-    mm_log "obsidian orphans failed, using fs" >&2
-  fi
-  mmfs_orphans
-}
-
-mm_w_unresolved() {
-  if [ "$MM_MODE" = cli ]; then
-    local out rc; out="$(mmcli_unresolved 2>/dev/null)"; rc=$?
-    if [ $rc -eq 0 ]; then printf '%s\n' "$out"; return 0; fi
-    mm_log "obsidian unresolved failed, using fs" >&2
-  fi
-  mmfs_unresolved
-}
-
-mm_w_move() {
-  local ref="$1" to="$2"
-  if [ "$MM_MODE" = cli ]; then
-    if mmcli_move "$ref" "$to" 2>/dev/null; then return 0; fi
-    mm_log "obsidian move failed, using fs (links will NOT update)" >&2
-  fi
-  mmfs_move "$ref" "$to"
-}
-
-mm_w_rename() {
-  local ref="$1" newname="$2"
-  if [ "$MM_MODE" = cli ]; then
-    if mmcli_rename "$ref" "$newname" 2>/dev/null; then return 0; fi
-    mm_log "obsidian rename failed, using fs (links will NOT update)" >&2
-  fi
-  mmfs_rename "$ref" "$newname"
-}
+# MM_FORCE_FS is deprecated. The runtime is always shell/fs now; if a caller
+# still exports it (e.g. an old env.sh or e2e harness), warn once and ignore.
+if [ "${MM_FORCE_FS:-0}" = 1 ]; then
+  mm_log "MM_FORCE_FS is deprecated and ignored (runtime is always shell)" >&2
+fi
 
 # --- preflight ------------------------------------------------------------
 
+# Detect the search backend used by mmfs_search / mmfs_backlinks: prefer rg,
+# fall back to grep. Print the binary name (rg|grep).
+mm_detect_search() {
+  if command -v rg >/dev/null 2>&1; then printf 'rg'; else printf 'grep'; fi
+}
+
+# Preflight contract (see docs/superpowers/specs/2026-08-04-shell-only-runtime-design.md
+# section 4.3). Single machine-readable line plus source. No bin=/app=;
+# mode=fs and forced=0 are kept as transitional fields for one minor version
+# so older agent stubs that parse the legacy line do not break.
 mm_preflight() {
-  local app_state="stopped"
-  [ "${MM_APP_RUNNING:-0}" = 1 ] && app_state="running"
-  printf 'mode=%s vault=%s bin=%s app=%s forced=%s\n' \
-    "$MM_MODE" "$MM_VAULT" "${MM_OBSIDIAN:-}" "$app_state" "${MM_FORCED:-0}"
+  local search; search="$(mm_detect_search)"
+  printf 'runtime=shell mode=fs vault=%s search=%s forced=0\n' "$MM_VAULT" "$search"
   printf 'source=%s\n' "$MM_SOURCE"
-  if [ "$MM_MODE" = fs ]; then
-    if [ "${MM_FORCED:-0}" = 1 ]; then
-      printf 'hint: fs mode forced via MM_FORCE_FS=1; CLI probe skipped (Obsidian GUI will not launch)\n' >&2
-    elif [ -z "${MM_OBSIDIAN:-}" ]; then
-      printf 'hint: obsidian CLI not found; install Obsidian 1.12.7+ and enable Settings -> General -> Command line interface\n' >&2
-    elif [ "$app_state" = stopped ]; then
-      printf 'hint: Obsidian app is not running; start it for cli mode (backlink graph, link-safe move)\n' >&2
-    fi
-  fi
   # Update check: compare installed VERSION vs dev repo VERSION.
   local upd
   if upd="$(mm_check_update 2>/dev/null)"; then
@@ -244,7 +160,7 @@ mm_usage() {
 memovault - sink knowledge into the local memo vault.
 
 Resolve:
-  preflight                     show mode (cli/fs), vault, obsidian binary, app state
+  preflight                     show runtime (shell/fs), vault, search backend
   upgrade                       re-sync from the dev repo and re-inject agents
                                 (delegates to install.sh --upgrade)
 
@@ -269,8 +185,8 @@ Graph:
   unresolved                    [[links]] pointing nowhere yet
 
 Organize / curate:
-  move <note> <folder-or-path>  (link-safe in cli mode)
-  rename <note> "<New Title>"
+  move <note> <folder-or-path>  (filesystem move; links not auto-updated)
+  rename <note> "<New Title>"  (link-safe: rewrites [[wikilinks]] across vault)
   promote <note>                seedling -> growing -> evergreen
   moc <domain>                  (re)generate the domain index note
 
@@ -294,16 +210,16 @@ main() {
     read)         mmfs_read "${1:-}" ;;
     daily)        mmfs_daily ;;
     daily:append) mmfs_daily_append "${1:-}" ;;
-    search)       mm_w_search "${1:-}" ;;
-    tags)         mm_w_tags ;;
-    tag)          mm_w_tag "${1:-}" ;;
-    by-tag)       mm_w_tag "${1:-}" ;;
-    backlinks)    mm_w_backlinks "${1:-}" ;;
-    links)        mm_w_links "${1:-}" ;;
-    orphans)      mm_w_orphans ;;
-    unresolved)   mm_w_unresolved ;;
-    move)         mm_w_move "${1:-}" "${2:-}" ;;
-    rename)       mm_w_rename "${1:-}" "${2:-}" ;;
+    search)       mmfs_search "$@" ;;
+    tags)         mmfs_tags ;;
+    tag)          mmfs_tag "${1:-}" ;;
+    by-tag)       mmfs_tag "${1:-}" ;;
+    backlinks)    mmfs_backlinks "${1:-}" ;;
+    links)        mmfs_links "${1:-}" ;;
+    orphans)      mmfs_orphans ;;
+    unresolved)   mmfs_unresolved ;;
+    move)         mmfs_move "${1:-}" "${2:-}" ;;
+    rename)       mmfs_rename "${1:-}" "${2:-}" ;;
     promote)      mm_promote "${1:-}" ;;
     moc)          mm_moc "${1:-}" ;;
     by-heat)      mm_by_heat ;;

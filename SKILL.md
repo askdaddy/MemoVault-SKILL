@@ -1,14 +1,15 @@
 ---
 name: memovault
-version: 0.4.1
+version: 0.5.0
 description: "Sink knowledge into a local Obsidian vault with bash. Use when the user wants to capture, save, record, or sink knowledge, notes, learnings, decisions, meeting takeaways, code snippets, or research into their memo vault / second brain / Obsidian knowledge base; or to create, edit, link, search, classify by domain, promote by heat, distill raw notes, or maintain backlinks, daily notes, and skill SOPs. Trigger phrases: 记到笔记 / 记一下 / 笔记里记一下 / 沉淀 / 沉淀一下 / 存到 vault / 存一下 / 存档 / 存到知识库 / 知识库 / 备忘录 / 双链 / 回链 / 按领域归档 / 提升热度 / 日记 / 每日笔记 / remember this / save this / save to vault / save to notes / memo it / note this / capture this / second brain / knowledge base / daily note / backlinks / link this note."
 ---
 
 # MemoVault
 
-Sink knowledge into a local Obsidian vault using bash. No Obsidian plugin needed.
-Depends on the official Obsidian CLI (https://obsidian.md/cli) when the desktop
-app is running; falls back to pure filesystem operations when it is not.
+Sink knowledge into a local Obsidian vault using bash. No Obsidian plugin
+needed, and the Obsidian desktop app / CLI is not a runtime dependency: the
+helper reads and writes plain markdown directly under `$AGENT_MEMO_VAULT`.
+Humans may open the same vault in Obsidian for browsing.
 
 This file is the canonical skill definition. Installed copies under agent skill
 directories are pointer stubs that redirect here.
@@ -32,8 +33,9 @@ The skill ships a helper script. After install it lives at
 # Vault path (override per user; default below)
 export AGENT_MEMO_VAULT="${AGENT_MEMO_VAULT:-$HOME/.agent-memo-vault}"
 
-# Force fs mode: skip the Obsidian CLI probe entirely so the GUI never launches.
-# Set to 1 for silent/headless runs, or when the CLI binary is absent.
+# MM_FORCE_FS is deprecated and ignored: the runtime is always shell, so there
+# is nothing to force. The line is kept only for backward compatibility with
+# older env.sh files; you can remove it.
 export MM_FORCE_FS="${MM_FORCE_FS:-0}"
 
 # Helper location (repo during development, home after install)
@@ -45,12 +47,8 @@ Everything below assumes `$MM` points at the helper and `$AGENT_MEMO_VAULT` is s
 
 The helper sources `env.sh` (`~/.agents/skills/memovault/env.sh`) at startup, so
 variables pinned there apply to every caller without each agent exporting them.
-To persistently run headless on a host whose `obsidian` binary is the GUI app
-(not a real `obsidian-cli`), write `MM_FORCE_FS=1` there once:
-
-```bash
-install/install.sh --force-fs   # writes MM_FORCE_FS=1 into env.sh (re-run on upgrade)
-```
+`install.sh --force-fs` is a no-op kept for backward compatibility; the runtime
+is always shell, so there is nothing to force.
 
 ## 2. Preflight (run once per session)
 
@@ -58,24 +56,23 @@ install/install.sh --force-fs   # writes MM_FORCE_FS=1 into env.sh (re-run on up
 "$MM" preflight
 ```
 
-Output reports: resolved vault path, whether the `obsidian` binary exists, whether
-the Obsidian app is running, the active mode (`cli` or `fs`), and whether fs mode
-was forced. Use the reported mode to set expectations:
+Output reports: `runtime=shell`, the resolved vault path, and the search backend
+(`rg` or `grep`). The line looks like:
 
-- `cli` mode: backlinks, link safe move/rename, tags, properties, and search are
-  native and authoritative.
-- `fs` mode: write/read/search still work; backlinks and tag queries are
-  approximated by scanning `[[wikilinks]]` and frontmatter; `move`/`rename` will
-  NOT auto update links, so warn the user.
+```
+runtime=shell mode=fs vault=<path> search=rg forced=0
+```
 
-If `cli` mode is unavailable and the user wants link graph features, tell them to
-start Obsidian (and, once, enable Settings -> General -> Command line interface on
-Obsidian 1.12.7 or newer).
+`runtime=shell` is the authoritative field. `mode=fs` and `forced=0` are
+transitional fields kept for one minor version so older agent stubs that parse
+the legacy `mode=...` line do not break; they may be removed in a future minor
+version. There is no `cli` mode, no `obsidian` binary probe, and no GUI launch.
 
-To run fully headless (never launch the Obsidian GUI), set `MM_FORCE_FS=1` before
-calling the helper. The probe is skipped entirely and `preflight` reports
-`forced=1`. This is the recommended setting when the CLI binary is absent or when
-the agent must not open windows.
+The helper always uses the same shell/filesystem implementation, so behavior is
+identical across hosts. Wikilink graph features (backlinks, links, orphans,
+unresolved) are approximated by scanning `[[wikilinks]]` and frontmatter;
+`rename` rewrites `[[wikilinks]]` across the vault so the graph stays consistent
+without Obsidian.
 
 ### Update and upgrade
 
@@ -140,13 +137,14 @@ See [[Human Readable Title]] and its alias [[Short Name]].
   names so `[[Short Name]]` resolves.
 - Use `backlinks <note>` to find what references a note before editing or merging.
 - Use `orphans` and `unresolved` periodically to keep the graph healthy.
-- `move`/`rename` in `cli` mode updates all `[[links]]` automatically; in `fs`
-  mode they do not, so prefer `cli` mode for reorganization.
+- `rename` rewrites `[[wikilinks]]` across the vault (link-safe). `move` does
+  not change the basename, so existing `[[links]]` stay valid; prefer `rename`
+  for any title change and `move` for folder changes.
 
 ## 5. Operations (helper subcommands)
 
-All subcommands are invoked as `"$MM" <subcommand> [args...]`. They auto select
-`cli` or `fs` implementation.
+All subcommands are invoked as `"$MM" <subcommand> [args...]`. They use the
+single shell/filesystem implementation in `scripts/lib/fs.sh`.
 
 ### Capture / edit
 
@@ -187,16 +185,18 @@ All subcommands are invoked as `"$MM" <subcommand> [args...]`. They auto select
 ### Organize / curate
 
 ```bash
-"$MM" move "<Title>" "<new-folder-or-path>"   # link safe in cli mode
-"$MM" rename "<Title>" "<New Title>"
+"$MM" move "<Title>" "<new-folder-or-path>"   # filesystem move; basename preserved so links stay valid
+"$MM" rename "<Title>" "<New Title>"          # link-safe: rewrites [[wikilinks]] across the vault
 "$MM" promote "<Title>"                       # seedling->growing->evergreen
 "$MM" moc "<domain>"                          # (re)generate domain index note
 ```
 
 ### Low level (when the helper is not enough)
 
-You may call the Obsidian CLI directly. Always `cd "$AGENT_MEMO_VAULT"` first so
-the right vault is selected, or pass `vault=agent-memo-vault` as the first param.
+For humans using Obsidian: you may call the Obsidian CLI directly to browse or
+edit the vault. Always `cd "$AGENT_MEMO_VAULT"` first so the right vault is
+selected, or pass `vault=agent-memo-vault` as the first param. The helper itself
+does NOT call this CLI; this is purely optional for human browsing.
 
 ```bash
 cd "$AGENT_MEMO_VAULT"
@@ -274,31 +274,32 @@ When the turn produced a reusable how-to that would save future turns:
    `seedling` if they do not exist yet.
 6. If the note is clearly important, suggest `promote`.
 
-## 8. fs mode notes
+## 8. Shell runtime notes
 
-When the helper reports `fs` mode:
+The helper always runs in the single shell/filesystem runtime:
+
 - Notes are plain markdown files under `$AGENT_MEMO_VAULT/brain/<domain>/`.
 - `search` uses `ripgrep` (`rg`), falling back to `grep -rn`.
 - `backlinks`/`links` scan for `[[Title]]` text (approximate; aliases not fully
   resolved).
-- `move`/`rename` move the file only; existing `[[links]]` may break. Warn the
-  user and offer to run a follow up `search` to fix stale links when `cli` mode
-  returns.
+- `rename` rewrites `[[wikilinks]]` across the vault (link-safe) via
+  `scripts/lib/rewrite.sh`. Fenced code blocks (``` ``` ```) are skipped; inline
+  code containing `[[...]]` is not protected in v1 and may be rewritten by
+  accident (documented limitation).
+- `move` only changes the folder/path and preserves the basename, so existing
+  `[[links]]` stay valid.
 
-fs mode can be forced with `MM_FORCE_FS=1` (see section 1). Forced mode skips the
-CLI probe entirely, so the Obsidian GUI is never launched. This is the
-recommended way to run the skill on hosts where the CLI binary is absent or where
-opening a window is undesirable. The tradeoff is that link graph features stay
-approximated even if Obsidian is later started; unset `MM_FORCE_FS` and re-run
-`preflight` to re-detect `cli` mode.
+`MM_FORCE_FS` is accepted for backward compatibility but ignored: the runtime is
+always shell, so there is nothing to force. The helper prints a one-line
+deprecation warning if it sees `MM_FORCE_FS=1`.
 
 ## 9. Safety
 
 - Destructive ops (`delete`, bulk `move`) require explicit user confirmation.
-- The helper never deletes permanently unless asked; Obsidian trash is used in
-  `cli` mode.
-- Keep frontmatter valid YAML. Use the helper (`new`, `promote`) or
-  `property:set` rather than hand editing when possible.
+- The helper never deletes permanently unless asked; deletion is left to the
+  user / Obsidian trash when browsing.
+- Keep frontmatter valid YAML. Use the helper (`new`, `promote`) rather than
+  hand editing when possible.
 
 ## 10. Out of scope (this version)
 

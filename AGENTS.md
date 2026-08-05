@@ -12,15 +12,17 @@ Human contributors: read this too. It is the project charter.
 
 **MemoVault** is a pure local filesystem skill. It teaches coding agents how to
 sink knowledge into an Obsidian vault using bash commands. No Obsidian plugin is
-required. It depends on the official Obsidian CLI (https://obsidian.md/cli) when
-the Obsidian desktop app is running, and falls back to plain filesystem
-operations when it is not.
+required, and the Obsidian desktop app / CLI is not a runtime dependency: the
+helper reads and writes plain markdown directly under `$AGENT_MEMO_VAULT`.
+Humans may open the same vault in Obsidian for browsing.
 
 - Skill name: `memovault`
-- Knowledge vault (Obsidian vault): `~/.agent-memo-vault/`
+- Knowledge vault (Obsidian vault, optional for browsing): `~/.agent-memo-vault/`
 - Vault path override env var: `AGENT_MEMO_VAULT` (default `~/.agent-memo-vault`)
 - Canonical skill source after install: `~/.agents/skills/memovault/`
 - Heat tiers (no symbols): `seedling`, `growing`, `evergreen`
+- Supported platforms: macOS and Linux (bash 3.2 compatible subset); Windows
+  via WSL2 running the same bash scripts (no native PowerShell business logic)
 
 ## 2. Naming contract (do not deviate)
 
@@ -47,41 +49,48 @@ CLAUDE.md              pointer to AGENTS.md for Claude Code
 README.md              human overview
 SKILL.md               canonical skill definition (source of truth, gets installed)
 docs/
-  ARCHITECTURE.md      CLI/FS dual layer, data flow, fallback strategy
+  ARCHITECTURE.md      single shell layer, data flow
   CLASSIFICATION.md    domain + heat classification scheme
-  CLI-REFERENCE.md     Obsidian CLI quick reference (curated)
+  CLI-REFERENCE.md     optional Obsidian CLI reference (humans; not a runtime dependency)
   DEVELOPMENT.md       how to extend: adapters, phases, vector search slot
   RIPER.md             SDD-RIPER process record (spec + decisions)
   INSTALL.md           per agent install guide
 scripts/
-  memovault.sh         entry: preflight + mode detection + subcommand dispatch
-  lib/cli.sh           Obsidian CLI wrapper + availability probe
-  lib/fs.sh            pure filesystem fallback (heredoc, rg/grep)
+  memovault.sh         entry: preflight + subcommand dispatch
+  lib/fs.sh            pure filesystem runtime (heredoc, rg/grep, awk)
+  lib/rewrite.sh       [[wikilink]] rewriter used by rename
   lib/classify.sh      domain/heat/MOC helpers
 install/
   install.sh           installer: --agent <x> | --all | --register-vault
   targets.sh           agent -> {path, adapter, kind} mapping
   adapters/<agent>.md  per agent injection stub templates
 templates/
-  note.md daily.md moc.md
+  note.md daily.md moc.md skill.md
 VERSION
 ```
 
 ## 4. How the skill works (summary)
 
-The helper `scripts/memovault.sh` exposes subcommands to the agent. Each
-subcommand detects the runtime mode and chooses the best implementation:
-
-- **cli mode**: the `obsidian` binary is on PATH and the Obsidian app is
-  running. Operations go through the official CLI, which gives backlink graph
-  resolution, link safe move/rename, tags, properties, and native search.
-- **fs mode**: fallback. Operations write markdown directly under
-  `$AGENT_MEMO_VAULT` and use `rg`/`grep` for retrieval. Wikilink backlinks are
-  approximated by scanning `[[link]]` text.
+The helper `scripts/memovault.sh` exposes subcommands to the agent. There is a
+single shell/filesystem runtime: every subcommand reads and writes markdown
+directly under `$AGENT_MEMO_VAULT` via `scripts/lib/fs.sh`. `rename` rewrites
+`[[wikilinks]]` across the vault via `scripts/lib/rewrite.sh`. There is no
+`cli` mode, no Obsidian binary probe, and no GUI launch. `MM_FORCE_FS` is
+accepted for backward compatibility but ignored (the runtime is always shell).
 
 Full surface: `preflight`, `new`, `append`, `prepend`, `read`, `daily`,
 `search`, `tags`, `by-tag`, `backlinks`, `links`, `orphans`, `unresolved`,
 `move`, `rename`, `promote`, `moc`, `by-heat`.
+
+`preflight` prints a single machine readable line:
+
+```
+runtime=shell mode=fs vault=<path> search=rg|grep forced=0
+```
+
+`mode=fs` and `forced=0` are transitional fields kept for one minor version so
+older agent stubs that parse the legacy line do not break; `runtime=shell` is
+the authoritative field. They may be removed in a future minor version.
 
 See `SKILL.md` for the agent facing contract and `docs/ARCHITECTURE.md` for internals.
 

@@ -3,16 +3,15 @@
 [中文](README_CN.md)
 
 A pure local filesystem skill that teaches coding agents how to sink knowledge
-into an Obsidian vault with bash. No Obsidian plugin is required.
-
-When the Obsidian desktop app is running, MemoVault uses the official
-[Obsidian CLI](https://obsidian.md/cli). When it is not, it falls back to plain
-markdown + `rg`/`grep` on the same vault files.
+into an Obsidian vault with bash. No Obsidian plugin is required, and the
+Obsidian desktop app / CLI is not a runtime dependency: MemoVault writes and
+reads plain markdown directly under the vault directory. Humans may open the
+same vault in Obsidian for browsing.
 
 | | |
 |---|---|
 | Skill name | `memovault` |
-| Version | `0.4.1` (see `VERSION`) |
+| Version | `0.5.0` (see `VERSION`) |
 | Skill source (after install) | `~/.agents/skills/memovault/` |
 | Knowledge vault | `~/.agent-memo-vault/` |
 | Vault override | `AGENT_MEMO_VAULT` |
@@ -33,10 +32,13 @@ distill raw evidence into atoms/scenarios, and skill SOPs under `brain/skills/`)
 - **Capture / edit:** `new`, `append`, `prepend`, `read`, `daily`, `daily:append`
 - **Retrieve:** full-text `search`, `tags` / `by-tag`, `by-heat`
 - **Graph:** `backlinks`, `links`, `orphans`, `unresolved`
-- **Organize:** `move`, `rename` (link-safe in `cli` mode), `promote`, `moc`
+- **Organize:** `move`, `rename` (link-safe: rewrites `[[wikilinks]]` across the
+  vault), `promote`, `moc`
 - **Layered memory:** optional `kind` + `sources` for distill provenance
-- **Dual runtime:** `cli` when Obsidian+CLI work; `fs` otherwise (or forced with
-  `MM_FORCE_FS=1` for headless hosts)
+- **Single shell runtime:** one bash/filesystem implementation; no headless
+  toggle, no GUI probe, no `obsidian` binary required
+- **Cross-platform:** macOS and Linux officially; Windows via WSL2 running the
+  same bash scripts (no native PowerShell business logic)
 - **Multi-agent install:** Claude, Cursor, Codex, Gemini, Cline, Copilot, and more
 
 Vector / semantic search is deferred; see `docs/DEVELOPMENT.md`.
@@ -44,18 +46,24 @@ Vector / semantic search is deferred; see `docs/DEVELOPMENT.md`.
 ## Requirements
 
 - Bash (macOS ships 3.2; scripts stay compatible)
-- `jq` for vault registration / e2e CLI phase; `rg` recommended (`grep` fallback)
-- Obsidian installer **1.12.7+** only if you want `cli` mode
-  (Settings -> General -> Command line interface, then register on PATH)
+- `find`, `awk`, `grep`, `mv`, `mktemp`; `rg` recommended (`grep` fallback)
+- `jq` only for the optional `--register-vault` step (not required by the helper)
 
-`fs` mode works without Obsidian installed.
+Obsidian is optional: install it only if you want to browse the vault in the
+desktop app. The helper never depends on the Obsidian CLI or on the app running.
+
+### Windows
+
+Windows is supported only through WSL2. Install WSL2, then run the same bash
+commands from inside the WSL shell (e.g. `wsl ./scripts/memovault.sh ...`). No
+native `.ps1` implementation is provided or maintained.
 
 ## Quick start
 
 ```bash
 # From this repository
 ./install/install.sh --all              # skill source + inject all supported agents
-./install/install.sh --register-vault   # register ~/.agent-memo-vault in Obsidian
+./install/install.sh --register-vault   # optional: register ~/.agent-memo-vault in Obsidian for browsing
 ./install/install.sh --verify           # read-only health check
 ```
 
@@ -63,11 +71,12 @@ Useful variants:
 
 ```bash
 ./install/install.sh --agent cursor
-./install/install.sh --force-fs         # pin MM_FORCE_FS=1 in env.sh (headless)
 ./install/install.sh --upgrade          # re-sync from this repo + re-inject agents
 ```
 
-Restart the terminal and your agent after install. Full guide: `docs/INSTALL.md`.
+`--force-fs` is accepted for backward compatibility but is a no-op: the runtime
+is always shell, so there is nothing to force. Restart the terminal and your
+agent after install. Full guide: `docs/INSTALL.md`.
 
 ## Everyday use (agents)
 
@@ -80,7 +89,8 @@ MM="$HOME/.agents/skills/memovault/scripts/memovault.sh"
 "$MM" new travel "Trip Plan" --kind atom --tags trip --body "See [[City Guide]]"
 "$MM" search "Trip Plan" --limit 10
 "$MM" backlinks "Trip Plan"
-"$MM" promote "Trip Plan"
+"$MM" rename "Trip Plan" "Trip Plan 2026"   # wikilinks across the vault are rewritten
+"$MM" promote "Trip Plan 2026"
 ```
 
 In this repo during development, use `./scripts/memovault.sh` instead.
@@ -103,12 +113,13 @@ Injected adapters tell agents to:
 End-to-end harness (isolated temp vault; never touches `~/.agent-memo-vault`):
 
 ```bash
-./scripts/e2e/run.sh            # official gate: fs + cli (needs Obsidian+CLI)
-./scripts/e2e/run.sh --fs-only  # headless / CI-friendly escape hatch
+./scripts/e2e/run.sh            # official gate: single shell phase, no Obsidian needed
 ```
 
-Agent orchestration skill: `skills/testing-memovault/SKILL.md`  
-Design: `docs/superpowers/specs/2026-08-03-e2e-testing-design.md`
+`--fs-only` is kept as a no-op alias for older callers; `--cli-only` is removed.
+Agent orchestration skill: `skills/testing-memovault/SKILL.md`
+Design: `docs/superpowers/specs/2026-08-04-shell-only-runtime-design.md` (section 8
+supersedes the 2026-08-03 dual-mode gate).
 
 ## Docs map
 
@@ -117,9 +128,9 @@ Design: `docs/superpowers/specs/2026-08-03-e2e-testing-design.md`
 | `AGENTS.md` | Project charter and naming contract |
 | `SKILL.md` | Agent-facing skill definition (source of truth) |
 | `docs/INSTALL.md` | Install, verify, upgrade, uninstall |
-| `docs/ARCHITECTURE.md` | cli/fs layers and data flow |
+| `docs/ARCHITECTURE.md` | Single shell layer and data flow |
 | `docs/CLASSIFICATION.md` | Domain, heat, and memory kinds |
-| `docs/CLI-REFERENCE.md` | Curated Obsidian CLI notes |
+| `docs/CLI-REFERENCE.md` | Optional Obsidian CLI reference (humans; not a runtime dependency) |
 | `docs/DEVELOPMENT.md` | Extending adapters / phases / e2e pointers |
 | `docs/RIPER.md` | Spec-driven change log |
 

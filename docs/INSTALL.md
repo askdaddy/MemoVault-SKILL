@@ -5,11 +5,20 @@ one or more coding agents.
 
 ## 1. Prerequisites
 
-- Bash, `jq`, `rg` (ripgrep) recommended. `grep`/`awk` are fallbacks.
-- Obsidian installer 1.12.7 or newer (only needed for `cli` mode; `fs` mode
-  works without it).
-- In Obsidian: Settings -> General -> enable Command line interface, then follow
-  the on screen PATH registration. Restart the terminal afterward.
+- Bash, `find`, `awk`, `mv`, `mktemp`. `rg` (ripgrep) recommended; `grep` is the
+  fallback for search.
+- `jq` only for the optional `--register-vault` step (the helper itself does not
+  need it).
+- Obsidian is optional. Install it only if you want to browse the vault in the
+  desktop app. The helper never depends on the Obsidian CLI or on the app
+  running, so there is no "must enable Settings -> Command line interface" step
+  anymore.
+
+### Windows
+
+Windows is supported only through WSL2. Install WSL2 and run the same bash
+commands from inside the WSL shell. No native `.ps1` implementation is
+maintained.
 
 ## 2. Concepts
 
@@ -28,7 +37,7 @@ Run from the repository root.
 # Install the skill source and scaffold the vault (no agent injection yet)
 ./install/install.sh --source-only
 
-# Register the vault into Obsidian (backs up obsidian.json first)
+# Optional: register the vault into Obsidian for browsing (backs up obsidian.json first)
 ./install/install.sh --register-vault
 
 # Inject into one agent
@@ -52,18 +61,19 @@ Run from the repository root.
 
 Flags:
 - `--source-only`: copy skill to the source dir and scaffold the vault only.
-- `--register-vault`: add `~/.agent-memo-vault` to `obsidian.json` as
-  `agent-memo-vault` (id derived from the path). Skipped silently if Obsidian is
-  older than required or the file is absent; prints guidance instead.
+- `--register-vault`: optional. Adds `~/.agent-memo-vault` to `obsidian.json` as
+  `agent-memo-vault` (id derived from the path) so you can browse the vault in
+  the Obsidian desktop app. This is NOT required by the helper; the helper never
+  reads `obsidian.json` and never checks whether the app is running. Skipped
+  silently if `obsidian.json` is absent; prints guidance instead.
 - `--agent <name>`: inject into one agent.
 - `--all`: inject into every agent in `targets.sh`.
 - `--vault <path>`: override the vault path (and `AGENT_MEMO_VAULT`).
 - `--source <path>`: override the skill source dir.
 - `--inline`: embed the full `SKILL.md` in each adapter instead of a pointer.
 - `--force`: overwrite existing files.
-- `--force-fs`: write `MM_FORCE_FS=1` into `env.sh` so the helper runs headless
-  (skips the Obsidian CLI probe; no GUI). Opt-in; default off preserves cli mode
-  for hosts with a real `obsidian-cli`.
+- `--force-fs`: deprecated. Accepted for backward compatibility but is a no-op:
+  the runtime is always shell, so there is nothing to force. Prints a warning.
 - `--dry-run`: print actions only.
 - `--verify`: read-only check of skill source, vault scaffold, and always-on
   agent injections. Optional `--agent` to limit scope. Exit 1 on failure.
@@ -82,19 +92,11 @@ that file:
 export AGENT_MEMO_VAULT="${AGENT_MEMO_VAULT:-$HOME/.agent-memo-vault}"
 ```
 
-Headless (no Obsidian GUI): on a host whose `obsidian` binary is the GUI app
-rather than a real `obsidian-cli`, the mode probe itself launches the GUI. Pin
-headless mode persistently for all agents:
-
-```bash
-./install/install.sh --force-fs                       # adds MM_FORCE_FS=1 to env.sh
-./install/install.sh --upgrade --force-fs --no-pull    # keep it across upgrades
-```
-
-This writes `export MM_FORCE_FS="${MM_FORCE_FS:-1}"` into env.sh. It is opt-in;
-hosts with a working `obsidian-cli` should leave it off to keep cli mode
-(authoritative backlinks, link-safe move/rename). A caller can still override per
-invocation by exporting `MM_FORCE_FS=0`.
+`MM_FORCE_FS` is deprecated and ignored by the helper. If you previously used
+`install.sh --force-fs` to write `MM_FORCE_FS=1` into `env.sh`, that line is
+now harmless: the helper prints a one-line deprecation warning and proceeds as
+shell. You can remove the line from `env.sh` on your next upgrade; the installer
+no longer adds it.
 
 You may still source env.sh from your shell rc for your own terminal use (not
 required for the helper):

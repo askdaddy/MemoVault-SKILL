@@ -3,7 +3,7 @@
 You have a local knowledge vault. Use it proactively, not only when asked.
 
 - Vault path: `$AGENT_MEMO_VAULT` (default __MEMOVAULT_VAULT__)
-- Helper: __MEMOVAULT_HELPER__ (run `preflight` once per session to detect cli/fs mode)
+- Helper: __MEMOVAULT_HELPER__ (run `preflight` once per session to confirm the shell runtime and vault path)
 - Full command reference: __MEMOVAULT_SOURCE__/SKILL.md
 
 ### 1. Recall - automatic, every task
@@ -68,4 +68,6 @@ When the turn produced a reusable how-to:
 
 - Never write outside the vault. Never use emoji in note content or frontmatter.
 - Confirm before any delete or bulk move; destructive ops need explicit consent.
-- In fs mode, `move`/`rename` do NOT update `[[links]]`; warn the user first.
+- `rename` rewrites `[[wikilinks]]` across the vault (link-safe). `move` does not
+  change the basename, so existing `[[links]]` stay valid; warn the user only if
+  a future move implementation also renames.

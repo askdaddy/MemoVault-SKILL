@@ -1,20 +1,24 @@
 # Architecture
 
-This document describes how MemoVault works internally: the layers, the data
-flow, the runtime modes, and the fallback strategy.
+This document describes how MemoVault works internally: the single shell
+layer, the data flow, and the wikilink rewrite strategy.
 
 ## 1. Goals and non goals
 
 Goals:
 - Let any coding agent sink knowledge into a local Obsidian vault with bash.
-- Require no Obsidian plugin.
-- Use the official Obsidian CLI for authoritative graph operations when possible.
-- Keep working (read/write/search) when the Obsidian app is not running.
+- Require no Obsidian plugin, no `obsidian` binary, and no running desktop app.
+- Provide link-safe `rename` (rewrites `[[wikilinks]]` across the vault) in pure
+  shell, so the graph stays consistent without Obsidian.
+- Work on macOS, Linux, and Windows via WSL2 from the same bash scripts.
 
 Non goals (this version):
 - Vector / semantic search. Slot reserved, not implemented.
 - Cloud sync, publishing, multi vault federation.
 - A custom daemon or background indexer.
+- Native PowerShell business logic for Windows (WSL2 only).
+- A perfect Markdown AST (nested fences, inline code containing `[[...]]`).
+  The rewriter handles fenced code blocks; inline code is not protected in v1.
 
 ## 2. Layers
 
@@ -27,21 +31,21 @@ Non goals (this version):
           +---------------v---------------+
           |  scripts/memovault.sh         |  dispatch + preflight
           |  scripts/lib/classify.sh      |  domain/heat/MOC
-          +---+-----------------------+---+
-              |                       |
-   +----------v----------+  +---------v----------+
-   | lib/cli.sh          |  | lib/fs.sh          |
-   | official obsidian   |  | plain markdown +   |
-   | CLI wrapper         |  | rg/grep/awk        |
-   +----------+----------+  +---------+----------+
-              |                       |
-              v                       v
-   requires: Obsidian app     writes: $AGENT_MEMO_VAULT/**/*.md
-   running + CLI registered   (the same files the CLI edits)
+          +---------------+---------------+
+                          |
+          +---------------v---------------+
+          |  scripts/lib/fs.sh            |  plain markdown +
+          |  scripts/lib/rewrite.sh        |  rg/grep/awk + wikilink rewrite
+          +---------------+---------------+
+                          |
+                          v
+          writes: $AGENT_MEMO_VAULT/**/*.md
+          (the same files humans may browse in Obsidian)
 ```
 
-Both layers operate on the same vault directory. `cli` and `fs` are two ways to
-touch the same markdown; they never run a parallel data store.
+There is one runtime layer. The helper never probes for the `obsidian` binary,
+never checks whether the Obsidian app is running, and never launches a GUI.
+`MM_FORCE_FS` is accepted but ignored (deprecated; the runtime is always shell).
 
 ## 3. Vault resolution
 
@@ -54,63 +58,55 @@ default: $HOME/.agent-memo-vault
 
 Rules:
 - All file paths are resolved under `$AGENT_MEMO_VAULT`.
-- In `cli` mode the helper `cd "$AGENT_MEMO_VAULT"` before each `obsidian ...`
-  call so the CLI auto selects the vault by working directory. The equivalent is
-  passing `vault=agent-memo-vault` as the first parameter.
-- The vault must be registered in Obsidian (`obsidian.json`) for `cli` mode to
-  recognize it. The installer can register it; see `INSTALL.md`.
 - At startup the helper sources `env.sh` from the skill source dir, so
-  `AGENT_MEMO_VAULT` (and `MM_FORCE_FS`, if set there) apply to every caller
-  without each agent exporting them. `install.sh --force-fs` writes
-  `MM_FORCE_FS=1` into `env.sh` for persistent headless operation on hosts whose
-  `obsidian` binary is the GUI app.
+  `AGENT_MEMO_VAULT` applies to every caller without each agent exporting it.
+  `install.sh --force-fs` is a no-op kept for backward compatibility; it no
+  longer writes anything into `env.sh` because there is nothing to force.
+- The vault does NOT need to be registered in Obsidian for the helper to work.
+  `install.sh --register-vault` is an optional convenience for humans who want
+  to browse the vault in the Obsidian desktop app.
 
-## 4. Runtime mode detection (`preflight`)
+## 4. Preflight
 
-`preflight` returns a single machine readable line plus a human summary:
+`preflight` returns a single machine readable line plus a source line:
 
 ```
-mode=cli vault=/Users/me/.agent-memo-vault bin=/usr/local/bin/obsidian app=running forced=0
-mode=fs  vault=/Users/me/.agent-memo-vault bin= app=stopped forced=0
-mode=fs  vault=/Users/me/.agent-memo-vault bin= app=stopped forced=1
+runtime=shell mode=fs vault=/Users/me/.agent-memo-vault search=rg forced=0
+source=/Users/me/.agents/skills/memovault
 ```
 
-Detection order:
-1. If `MM_FORCE_FS=1`, short-circuit: `mode=fs`, `forced=1`, no probe runs.
-   The Obsidian binary is not located and the app is not probed, so the GUI is
-   never launched. This is the headless path.
-2. `bin` = first existing of: `command -v obsidian`,
-   `/usr/local/bin/obsidian`, `~/.local/bin/obsidian`,
-   `/Applications/Obsidian.app/Contents/MacOS/obsidian-cli`.
-3. `app` = running if a process named `Obsidian` (macOS) or `obsidian` (Linux)
-  is alive (`pgrep`).
-4. `mode` = `cli` when both `bin` and `app` are present and the functional
-   probe (`obsidian version`, backgrounded with a timeout) succeeds, else `fs`.
+`runtime=shell` is the authoritative field. `mode=fs` and `forced=0` are
+transitional fields kept for one minor version so older agent stubs that parse
+the legacy `mode=...` line do not break; they may be removed in a future minor
+version. `search` is `rg` if `command -v rg` succeeds, otherwise `grep`. There is
+no `bin=` or `app=` field anymore: the helper does not locate or probe Obsidian.
 
-Caveat: invoking the CLI when the app is stopped may launch the app and block.
-`preflight` therefore probes the process, not the binary, before declaring
-`cli` mode. When this side effect is itself undesirable (e.g. the `obsidian`
-binary on PATH is actually the GUI app, or the agent must not open windows), set
-`MM_FORCE_FS=1` to skip the probe entirely.
+If the installed `VERSION` is older than the dev repo `VERSION`, `preflight`
+also prints a `hint: update-available <installed> <dev> (run: memovault
+upgrade)` line to stderr.
 
 ## 5. Operation mapping
 
-| Subcommand | cli mode (authoritative) | fs mode (fallback) |
-|---|---|---|
-| `new` | `obsidian create path= content= template=note` | heredoc write with frontmatter |
-| `append` | `obsidian append file= content=` | `cat >>` after last line |
-| `prepend` | `obsidian prepend file= content=` | insert after frontmatter via awk |
-| `read` | `obsidian read file=` | `cat` |
-| `daily` / `daily:append` | `obsidian daily[:append]` | `daily/YYYY-MM-DD.md` |
-| `search` | `obsidian search:context query= format=json` | `rg -n` / `grep -rn` |
-| `tags` / `tag` | `obsidian tags counts` / `obsidian tag name=` | scan `^tags:` lines |
-| `backlinks` | `obsidian backlinks file= counts format=json` | `rg -n "\[\[Title"` |
-| `links` | `obsidian links file=` | scan outgoing `[[...]]` |
-| `orphans` / `unresolved` | `obsidian orphans` / `obsidian unresolved` | fs: graph scan of `[[...]]` in `brain/` + `daily/`; unresolved also treats `daily/YYYY-MM-DD.md` (and vault-relative paths) as resolved |
-| `move` / `rename` | `obsidian move` / `obsidian rename` (links auto update) | `mv` only; links may break |
-| `promote` | `obsidian property:set name=heat value=...` + `updated` | awk edit frontmatter |
-| `moc` | list domain files, group by heat, write index | same, fs write |
-| `by-heat` | `obsidian properties` filter `heat` | scan `^heat:` lines |
+Every subcommand is implemented in `scripts/lib/fs.sh` (with `lib/rewrite.sh`
+for `rename`). There is no second column anymore; the table is single-track.
+
+| Subcommand | Implementation |
+|---|---|
+| `new` | heredoc write with frontmatter under `brain/<domain>/` |
+| `append` | `cat >>` after the last line |
+| `prepend` | insert after frontmatter via awk |
+| `read` | `cat` |
+| `daily` / `daily:append` | `daily/YYYY-MM-DD.md` |
+| `search` | `rg -n` / `grep -rn` |
+| `tags` / `tag` / `by-tag` | scan `^tags:` lines |
+| `by-heat` | scan `^heat:` lines, group by tier |
+| `backlinks` | `rg -n "\[\[Title"` across the vault (aliases not fully resolved) |
+| `links` | scan outgoing `[[...]]` in the note |
+| `orphans` / `unresolved` | graph scan of `[[...]]` in `brain/` + `daily/`; `unresolved` treats `daily/YYYY-MM-DD.md` (and vault-relative paths) as resolved |
+| `move` | `mv` only; basename preserved so wikilinks stay valid |
+| `rename` | `mv` + `lib/rewrite.sh` rewrites `[[wikilinks]]` across the vault and updates the target file's `title:` |
+| `promote` | awk edit frontmatter `heat` and `updated` |
+| `moc` | list domain files, group by heat, write index |
 
 ## 6. Data flow for a capture
 
@@ -121,25 +117,25 @@ binary on PATH is actually the GUI app, or the agent must not open windows), set
 4. Agent runs `append "<Title>" "<body>"` with `[[wikilinks]]`.
 5. Optionally `promote` later.
 
-In `cli` mode, steps 3 and 4 go through `obsidian`; in `fs` mode, through the
-filesystem. The resulting file is identical in structure.
+All four steps go through `lib/fs.sh`. The resulting file is plain markdown
+that humans can also open in Obsidian.
 
 ## 7. Failure handling
 
-- Missing `obsidian` binary or stopped app -> silently use `fs` mode; `preflight`
-  reports it.
 - Missing `rg` -> fall back to `grep -rn`.
 - Invalid frontmatter on `prepend`/`promote` -> the helper aborts with a clear
   message and does not write.
 - Write outside vault -> refused by the path resolver.
+- `rename` after `mv` succeeds but a per-file rewrite fails -> the helper
+  returns non-zero and prints the failing path to stderr. The renamed file is
+  not rolled back (documented limitation; a later entry may add a retry).
 
 ## 8. Security boundary
 
 - The helper resolves every target path and rejects anything that escapes
   `$AGENT_MEMO_VAULT` (no `../` traversal).
 - Destructive subcommands (`delete`) are intentionally absent from the public
-  surface in v0.1; removal goes through Obsidian trash in `cli` mode and is not
-  exposed in `fs` mode.
+  surface; removal is left to the user / Obsidian trash when browsing.
 
 ## 9. Upgrade flow (self-update)
 

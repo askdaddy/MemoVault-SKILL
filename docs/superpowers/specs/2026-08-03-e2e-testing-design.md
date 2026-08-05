@@ -1,7 +1,12 @@
 # 设计：MemoVault 端到端测试（混合 harness + agentic skill）
 
+> **已被取代（2026-08-04）。** 本规格描述的「fs + cli 双模式门禁」已被
+> `docs/superpowers/specs/2026-08-04-shell-only-runtime-design.md` §8 取代：MemoVault
+> 运行时已改为单一 shell/fs，不再依赖 Obsidian CLI，e2e 也改为单阶段 shell 门禁。
+> 本文件保留作历史参考；当前以 2026-08-04 规格为准。
+
 日期：2026-08-03  
-状态：已批准  
+状态：已被取代  
 仓库：MemoVault-SKILL
 
 ## 1. 目标

@@ -3,15 +3,14 @@
 [English](README.md)
 
 纯本地文件系统 skill：教编码 agent 用 bash 把知识沉到 Obsidian vault。不需要
-Obsidian 插件。
-
-桌面端 Obsidian 在跑时，走官方 [Obsidian CLI](https://obsidian.md/cli)；否则在同一
-套 markdown 上退回纯文件系统 + `rg`/`grep`。
+Obsidian 插件，**Obsidian 桌面端 / CLI 也不是运行时依赖**：MemoVault 直接以纯
+markdown 读写 vault 目录下同一批文件。人可以另外用 Obsidian 桌面端浏览同一
+个 vault。
 
 | | |
 |---|---|
 | Skill 名 | `memovault` |
-| 版本 | `0.4.1`（见 `VERSION`） |
+| 版本 | `0.5.0`（见 `VERSION`） |
 | 安装后 skill 源 | `~/.agents/skills/memovault/` |
 | 知识库 vault | `~/.agent-memo-vault/` |
 | Vault 覆盖变量 | `AGENT_MEMO_VAULT` |
@@ -31,9 +30,10 @@ atom/scenario，以及把可复用 SOP 记到 `brain/skills/`。
 - **写入 / 编辑：** `new`、`append`、`prepend`、`read`、`daily`、`daily:append`
 - **检索：** 全文 `search`、`tags` / `by-tag`、`by-heat`
 - **图谱：** `backlinks`、`links`、`orphans`、`unresolved`
-- **整理：** `move`、`rename`（`cli` 下链接安全）、`promote`、`moc`
+- **整理：** `move`、`rename`（链接安全：跨 vault 改写 `[[wikilinks]]`）、`promote`、`moc`
 - **分层记忆：** 可选 `kind` + `sources`（蒸馏溯源）
-- **双运行时：** Obsidian+CLI 可用时为 `cli`；否则 `fs`（也可用 `MM_FORCE_FS=1` 强制无头）
+- **单一 shell 运行时：** 一套 bash/文件系统实现；无 headless 开关、无 GUI 探测、不依赖 `obsidian` 二进制
+- **跨平台：** macOS、Linux 官方支持；Windows 仅通过 WSL2 跑同一套 bash 脚本（不维护原生 PowerShell 业务逻辑）
 - **多 Agent 安装：** Claude、Cursor、Codex、Gemini、Cline、Copilot 等
 
 向量 / 语义搜索刻意延后，见 `docs/DEVELOPMENT.md`。
@@ -41,18 +41,23 @@ atom/scenario，以及把可复用 SOP 记到 `brain/skills/`。
 ## 环境要求
 
 - Bash（兼容 macOS 自带的 3.2）
-- 注册 vault / e2e 的 cli 阶段需要 `jq`；推荐 `rg`（可回退 `grep`）
-- 只要 **`cli` 模式** 才需要 Obsidian 安装包 **1.12.7+**
-  （设置 -> 通用 -> 启用命令行接口，并注册到 PATH）
+- `find`、`awk`、`grep`、`mv`、`mktemp`；推荐 `rg`（可回退 `grep`）
+- `jq` 仅在可选的 `--register-vault` 步骤需要；helper 本身不需要
 
-没有 Obsidian 也能用 `fs` 模式。
+Obsidian 是可选的：仅当你想用桌面端浏览 vault 时才装。helper 永不依赖 Obsidian
+CLI，也不要求 Obsidian 在跑。
+
+### Windows
+
+Windows 仅通过 WSL2 支持。装好 WSL2 后，在 WSL shell 里跑同一套 bash 命令
+（例如 `wsl ./scripts/memovault.sh ...`）。不提供也不维护原生 `.ps1` 实现。
 
 ## 快速开始
 
 ```bash
 # 在本仓库根目录
 ./install/install.sh --all              # 安装 skill 源 + 注入所有支持的 agent
-./install/install.sh --register-vault   # 把 ~/.agent-memo-vault 注册进 Obsidian
+./install/install.sh --register-vault   # 可选：把 ~/.agent-memo-vault 注册进 Obsidian 仅供浏览
 ./install/install.sh --verify           # 只读健康检查
 ```
 
@@ -60,11 +65,11 @@ atom/scenario，以及把可复用 SOP 记到 `brain/skills/`。
 
 ```bash
 ./install/install.sh --agent cursor
-./install/install.sh --force-fs         # 在 env.sh 固定 MM_FORCE_FS=1（无头）
 ./install/install.sh --upgrade          # 从本仓库再同步并重新注入 agents
 ```
 
-安装后重启终端与 agent。完整说明：`docs/INSTALL.md`。
+`--force-fs` 为兼容旧脚本保留，但已是 no-op：运行时永远为 shell，没有可强制
+的东西。安装后重启终端与 agent。完整说明：`docs/INSTALL.md`。
 
 ## 日常用法（给 agent）
 
@@ -77,7 +82,8 @@ MM="$HOME/.agents/skills/memovault/scripts/memovault.sh"
 "$MM" new travel "Trip Plan" --kind atom --tags trip --body "See [[City Guide]]"
 "$MM" search "Trip Plan" --limit 10
 "$MM" backlinks "Trip Plan"
-"$MM" promote "Trip Plan"
+"$MM" rename "Trip Plan" "Trip Plan 2026"   # 跨 vault 的 [[wikilinks]] 会被改写
+"$MM" promote "Trip Plan 2026"
 ```
 
 开发本仓库时用 `./scripts/memovault.sh`。
@@ -98,12 +104,13 @@ Agent 侧契约以 `SKILL.md` 为准。
 端到端 harness（隔离临时 vault，绝不写 `~/.agent-memo-vault`）：
 
 ```bash
-./scripts/e2e/run.sh            # 官方门禁：fs + cli（需要 Obsidian+CLI）
-./scripts/e2e/run.sh --fs-only  # 无头 / CI 逃生口
+./scripts/e2e/run.sh            # 官方门禁：单阶段 shell，不需要 Obsidian
 ```
 
-Agent 编排 skill：`skills/testing-memovault/SKILL.md`  
-设计规格：`docs/superpowers/specs/2026-08-03-e2e-testing-design.md`
+`--fs-only` 保留为兼容别名（no-op）；`--cli-only` 已移除。
+Agent 编排 skill：`skills/testing-memovault/SKILL.md`
+设计规格：`docs/superpowers/specs/2026-08-04-shell-only-runtime-design.md`（§8 取代
+2026-08-03 的双模式门禁）。
 
 ## 文档索引
 
@@ -112,9 +119,9 @@ Agent 编排 skill：`skills/testing-memovault/SKILL.md`
 | `AGENTS.md` | 项目章程与命名合同 |
 | `SKILL.md` | 面向 agent 的 skill 定义（唯一真源） |
 | `docs/INSTALL.md` | 安装、校验、升级、卸载 |
-| `docs/ARCHITECTURE.md` | cli/fs 分层与数据流 |
+| `docs/ARCHITECTURE.md` | 单 shell 分层与数据流 |
 | `docs/CLASSIFICATION.md` | 领域、热度与 memory kinds |
-| `docs/CLI-REFERENCE.md` | Obsidian CLI 精简参考 |
+| `docs/CLI-REFERENCE.md` | 可选的 Obsidian CLI 参考（人用；非运行时依赖） |
 | `docs/DEVELOPMENT.md` | 扩展适配器 / 阶段 / e2e 指针 |
 | `docs/RIPER.md` | 规格驱动变更记录 |
 

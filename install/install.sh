@@ -42,14 +42,15 @@ Options:
   --source <dir>     skill source dir (default ~/.agents/skills/memovault)
   --vault <dir>      knowledge vault dir (default ~/.agent-memo-vault)
   --source-only      only install the source + scaffold the vault
-  --register-vault   register the vault into Obsidian's obsidian.json
+  --register-vault   optional: register the vault in Obsidian's obsidian.json
+                     so you can browse it in the desktop app (not required for
+                     the helper)
   --agent <name>     inject into one agent (repeatable)
   --all              inject into every supported agent
   --inline           embed the full SKILL.md instead of a pointer stub
   --force            overwrite existing stub files
-  --force-fs         write MM_FORCE_FS=1 into env.sh so the helper runs headless
-                     (skips the Obsidian CLI probe; no GUI). Opt-in; default off
-                     preserves cli mode for hosts with a real obsidian-cli.
+  --force-fs         deprecated: ignored (runtime is always shell). Kept for
+                     backward-compatible install scripts; prints a warning.
   --dry-run          print actions without writing
   --stdout           print the rendered body for an agent (for UI-only targets
                      such as Trae global AI Rules); requires --agent <name>
@@ -163,7 +164,7 @@ export AGENT_MEMO_VAULT="\${AGENT_MEMO_VAULT:-$VAULT}"
 EOF
   if [ "$FORCE_FS" = 1 ]; then
     cat >> "$SOURCE/env.sh" <<'EOF'
-export MM_FORCE_FS="${MM_FORCE_FS:-1}"
+# MM_FORCE_FS is deprecated and ignored (runtime is always shell).
 EOF
   fi
 }
@@ -481,7 +482,11 @@ while [ $# -gt 0 ]; do
     --register-vault) DO_REGISTER=1; shift ;;
     --inline) INLINE=1; shift ;;
     --force) FORCE=1; shift ;;
-    --force-fs) FORCE_FS=1; shift ;;
+    --force-fs)
+      FORCE_FS=1
+      printf 'install: --force-fs is deprecated and ignored (runtime is always shell)\n' >&2
+      shift
+      ;;
     --dry-run) DRY_RUN=1; shift ;;
     --stdout) STDOUT_MODE=1; shift ;;
     --verify) DO_VERIFY=1; shift ;;

@@ -1,19 +1,24 @@
 # Obsidian CLI quick reference
 
-Curated subset of the official Obsidian CLI (https://obsidian.md/cli) that this
-skill relies on. The full reference is at `help.obsidian.md` under
-"Extending Obsidian / Obsidian CLI".
+> **Not a runtime dependency.** MemoVault's helper does not call the Obsidian
+> CLI and does not require the Obsidian desktop app to be running. This page is
+> an optional reference for humans who already use Obsidian and want to browse
+> or edit the vault with its CLI by hand. The helper's own behavior is
+> documented in `SKILL.md` and `docs/ARCHITECTURE.md`.
 
-## Prerequisites
+Curated subset of the official Obsidian CLI (https://obsidian.md/cli). The full
+reference is at `help.obsidian.md` under "Extending Obsidian / Obsidian CLI".
+
+## Prerequisites (for human-side use only)
 
 - Obsidian installer 1.12.7 or newer.
 - Settings -> General -> enable "Command line interface", then register to PATH.
 - The Obsidian app must be running; the CLI connects to the running instance.
 - macOS manual register: `sudo ln -sf /Applications/Obsidian.app/Contents/MacOS/obsidian-cli /usr/local/bin/obsidian`
 - Linux: binary copied to `~/.local/bin/obsidian` (ensure it is on PATH).
-- Headless / silent operation: set `MM_FORCE_FS=1` to skip the CLI probe. MemoVault
-  then uses the filesystem fallback for everything, bypassing Obsidian entirely.
-  No GUI is launched; no `obsidian` binary is needed.
+
+None of the above is needed for the MemoVault helper. If you only want the
+helper, you can ignore this entire page.
 
 ## Syntax
 

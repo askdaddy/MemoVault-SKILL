@@ -41,29 +41,30 @@ e2e_mm move "$moved" "brain/${dom}/sub/" >/dev/null 2>&1 || true
 assert_file "$E2E_VAULT/brain/${dom}/sub/${moved}.md" "move dest ($E2E_PHASE)"
 
 # path escape: helper must refuse a destination containing a parent reference.
-# MM_FORCE_FS mirrors the active phase so the spawned helper lands in the same
-# mode the suite is running under (1 in fs phase, 0 in cli phase).
 assert_exit_nonzero "refuse move with .. ($E2E_PHASE)" \
-  env AGENT_MEMO_VAULT="$E2E_VAULT" MM_FORCE_FS="${MM_FORCE_FS:-0}" \
+  env AGENT_MEMO_VAULT="$E2E_VAULT" \
   "$E2E_MM" move "$new" "../escape/"
 
-# CLI-only link-safe rename: in cli mode the helper must go through the
-# Obsidian CLI (which rewrites wikilinks), not fall back to fs.
-if [ "$E2E_PHASE" = cli ]; then
-  tgt="${E2E_STEM} Link Target"
-  src="${E2E_STEM} Link Source"
-  tgt2="${E2E_STEM} Link Target Renamed"
-  e2e_mm new "$dom" "$tgt" --kind atom --body "T" >/dev/null 2>&1 || true
-  e2e_mm new "$dom" "$src" --kind atom --body "See [[$tgt]]" >/dev/null 2>&1 || true
-  # Fail CLI phase if helper falls back to fs.
-  rename_err="$(mktemp)"
-  e2e_mm rename "$tgt" "$tgt2" >"$rename_err" 2>&1 || true
-  if grep -q 'using fs (links will NOT update)' "$rename_err" 2>/dev/null; then
-    e2e_fail "cli rename link-safe" "fell back to fs"
-  else
-    e2e_pass "cli rename did not fs-fallback"
-  fi
-  src_body="$(e2e_mm read "$src" 2>/dev/null || true)"
-  assert_contains "$src_body" "$tgt2" "cli rename updated wikilink"
-  rm -f "$rename_err"
+# link-safe rename: the shell/fs rename path rewrites [[wikilinks]] across the
+# vault via lib/rewrite.sh. This is the official green condition (formerly the
+# cli-only red condition). After renaming the target, the source note's body
+# must contain the new title (wikilink updated), not the old one.
+tgt="${E2E_STEM} Link Target"
+src="${E2E_STEM} Link Source"
+tgt2="${E2E_STEM} Link Target Renamed"
+e2e_mm new "$dom" "$tgt" --kind atom --body "T" >/dev/null 2>&1 || true
+e2e_mm new "$dom" "$src" --kind atom --body "See [[$tgt]]" >/dev/null 2>&1 || true
+rename_err="$(mktemp)"
+e2e_mm rename "$tgt" "$tgt2" >"$rename_err" 2>&1 || true
+if grep -q 'links will NOT update' "$rename_err" 2>/dev/null; then
+  e2e_fail "rename link-safe ($E2E_PHASE)" "helper reported links NOT updated"
+else
+  e2e_pass "rename link-safe did not skip rewrite ($E2E_PHASE)"
 fi
+src_body="$(e2e_mm read "$src" 2>/dev/null || true)"
+assert_contains "$src_body" "$tgt2" "rename updated wikilink ($E2E_PHASE)"
+case "$src_body" in
+  *"[[$tgt]]"*) e2e_fail "rename removed old wikilink ($E2E_PHASE)" "old [[$tgt]] still present" ;;
+  *) e2e_pass "rename removed old wikilink ($E2E_PHASE)" ;;
+esac
+rm -f "$rename_err"

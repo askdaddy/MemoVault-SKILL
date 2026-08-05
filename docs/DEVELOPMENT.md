@@ -23,8 +23,9 @@ no-emoji rule.
 ## 3. Adding a subcommand
 
 1. Add the dispatch branch in `scripts/memovault.sh` (`mm_dispatch`).
-2. Implement `cli` path in `scripts/lib/cli.sh` and `fs` path in
-   `scripts/lib/fs.sh`. Both must write the same on disk format.
+2. Implement the behavior in `scripts/lib/fs.sh` (single shell runtime; there is
+   no cli layer anymore). If it touches wikilink rewriting, add a helper in
+   `scripts/lib/rewrite.sh`.
 3. If it touches classification, add a helper in `scripts/lib/classify.sh`.
 4. Document it in `SKILL.md` (section 5) and the mapping table in
    `docs/ARCHITECTURE.md` (section 5).
@@ -39,6 +40,9 @@ Conventions:
   3.2). Avoid: associative arrays, `${v,,}`, `mapfile`/`readarray`, and `case`
   patterns that put a `[...]` glob class immediately before a space (it fails to
   parse in 3.2). Quote literal text inside patterns, e.g. `*"not found"*`.
+- Cross-platform: never use `sed -i` (GNU/BSD disagree). Write to a `mktemp` file
+  then `mv`. Use only `/` paths and `$HOME` / `$TMPDIR`. The same scripts run on
+  macOS, Linux, and Windows via WSL2; do not add platform-specific branches.
 
 ## 4. Adding a target agent
 
@@ -79,8 +83,7 @@ Reserved seam:
 Candidate stack (decide at Plan time, not now):
 - Embeddings: a local model (e.g. via `ollama`) or an API.
 - Store: `sqlite-vec`, `lancedb`, or a plain `.jsonl` + cosine in awk/node.
-- The CLI has no vector support, so this layer is fs/index only and must not
-  depend on the Obsidian app running.
+- This layer is fs/index only and never depends on the Obsidian app running.
 
 Constraints to honor when built:
 - No network requirement at query time if a local model is used; or clearly mark
@@ -90,10 +93,12 @@ Constraints to honor when built:
 
 ## 6. 测试
 
-端到端验收（官方门禁：fs + cli 双模式）：
+端到端验收（官方门禁：单阶段 shell；不再需要 Obsidian）：
 
-1. 设计规格：`docs/superpowers/specs/2026-08-03-e2e-testing-design.md`
-2. 机械入口：`./scripts/e2e/run.sh`（`--keep` 留给 protocol 跟测）
+1. 设计规格：`docs/superpowers/specs/2026-08-04-shell-only-runtime-design.md`（§8 取代
+   2026-08-03 的双模式门禁；旧规格 `2026-08-03-e2e-testing-design.md` 保留作历史）
+2. 机械入口：`./scripts/e2e/run.sh`（`--keep` 留给 protocol 跟测；`--fs-only` 为兼容
+   no-op；`--cli-only` 已移除）
 3. Agent 编排：`skills/testing-memovault/SKILL.md`
 
 快速语法检查仍可用：

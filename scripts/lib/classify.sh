@@ -31,13 +31,8 @@ mm_promote() {
   [ -n "$next" ] || { mm_log "already evergreen: ${ref}"; return 0; }
   local today; today="$(mm_today)"
   local rel="${file#"$MM_VAULT"/}"
-  if [ "$MM_MODE" = cli ]; then
-    mmcli_set_prop "$rel" heat "$next" || mmfs_set_prop "$file" heat "$next"
-    mmcli_set_prop "$rel" updated "$today" || mmfs_set_prop "$file" updated "$today"
-  else
-    mmfs_set_prop "$file" heat "$next"
-    mmfs_set_prop "$file" updated "$today"
-  fi
+  mmfs_set_prop "$file" heat "$next"
+  mmfs_set_prop "$file" updated "$today"
   mm_log "promoted: ${cur:-<unset>} -> ${next}  (${rel})"
 }
 

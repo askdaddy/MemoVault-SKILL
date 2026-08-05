@@ -767,3 +767,86 @@ mode so distill provenance closes the loop.
 - Plan: docs/superpowers/plans/2026-08-03-e2e-testing.md（已批准）
 - Execute: scripts/e2e/* + skills/testing-memovault/SKILL.md + DEVELOPMENT/RIPER 指针
 - Review: FS 阶段 35/35 通过；CLI 阶段因 Obsidian 未运行于 preflight 失败（`./scripts/e2e/run.sh` exit 1）；另：当 Obsidian 运行但 vault 未在 GUI 打开时，`cli rename updated wikilink` 仍可能失败（Obsidian CLI 产品行为）；生产 vault 无 E2E STEM 污染；完整双模式需在 Obsidian 运行时再验收
+
+## 12. Entry: 纯 shell 运行时与跨平台（2026-08-04 / 05）
+
+### Research
+- 用户提出：MemoVault 在「Obsidian CLI 优先 + fs 回退」双运行时下，CLI 探测会
+  误启 GUI、跨平台不一致、e2e 双模式门禁在无头环境永远红。要求改为纯 shell 运行时。
+- 读 `scripts/memovault.sh`、`scripts/lib/cli.sh`、`scripts/lib/fs.sh`、
+  `scripts/lib/classify.sh`、`install/install.sh`、`scripts/e2e/*`、`SKILL.md`、
+  `docs/ARCHITECTURE.md`、`docs/INSTALL.md`、`docs/CLI-REFERENCE.md`、
+  `docs/DEVELOPMENT.md`、`docs/RIPER.md`、`README.md`、`README_CN.md`、
+  `install/adapters/_protocol.md`、`docs/superpowers/specs/2026-08-03-e2e-testing-design.md`。
+- 外部事实：Obsidian CLI 是有头 IPC 客户端，无 headless 模式；`obsidian` 在 macOS
+  常解析到 GUI 二进制；Windows 无原生 bash 业务栈，WSL2 是唯一可行路径。
+- 旧 `MM_FORCE_FS` 已被多个 env.sh / e2e harness 引用；废弃需保留兼容。
+
+### Innovate
+- 运行时：A 完全替换 CLI（仅强化 fs/shell） / B 保留双轨并加 headless / C 重新
+  设计 CLI 调用层。选 A：消除模式探测与 GUI 风险，单一实现可跨平台。
+- wikilink 改写：A 在 fs 层新写 `lib/rewrite.sh` / B 仅文档警告 / C 依赖 Obsidian。
+  选 A：让 `rename` 在纯 shell 下也链接安全，闭合 distill/图谱闭环。
+- Windows：A WSL2 跑同一套 bash / B 维护原生 `.ps1` / C 不支持。选 A：业务逻辑
+  单一来源；不扩范围。
+- `MM_FORCE_FS`：A 立即删 / B 保留并忽略 + stderr 废弃提示 / C 仍生效。选 B：
+  旧 env.sh / e2e 不破，提示用户清理。
+- `--register-vault`：A 删 / B 改为可选人用浏览用途。选 B：保留 Obsidian 浏览
+  价值，但 helper 永不要求。
+- `preflight` 输出：A 干净 `runtime=shell` / B 保留 `mode=fs forced=0` 过渡字段。
+  选 B：旧 agent stub 解析旧行不破；0.6.0 再删过渡字段。
+- e2e 门禁：A 单阶段 shell / B 保留双模式 + shell 优先。选 A：无头可绿、官方
+  门禁可复现。
+- 代码块改写：A 完整 AST / B 简单 fence 跳过 / C 不处理。选 B：覆盖常见正文，
+  文档标明局限（行内代码 `[[...]]` v1 可误改）。
+- aliases：A v1 不参与 rename 匹配 / B 读 frontmatter `aliases` 参与匹配。选 B：
+ 闭合「`[[Short Name]]` 在 rename 后失效」的洞。
+
+### Plan (approved via user "批准")
+- 规格：`docs/superpowers/specs/2026-08-04-shell-only-runtime-design.md`（已批准）。
+- 计划：`docs/superpowers/plans/2026-08-04-shell-only-runtime.md`，分 5 任务：
+  1) `rewrite.sh` + 挂到 `mmfs_rename`；2) 删 `cli.sh`、新 `preflight`、忽略
+  `MM_FORCE_FS`；3) e2e 单阶段 + link 断言；4) `0.5.0` / `--force-fs` no-op /
+  register 文案；5) 文档 + WSL 说明。
+- 版本：`0.4.1` -> `0.5.0`（breaking）。
+- 平台：macOS / Linux 官方；Windows 仅 WSL2；不维护原生 PowerShell。
+- 命名合同不变；无 emoji；`set -uo pipefail`；禁 `sed -i`。
+
+### Execute
+- Task 1：新建 `scripts/lib/rewrite.sh`（fence 跳过、aliases 参与匹配、精确匹配
+  `|` 前 target、mktemp + mv）；`scripts/lib/fs.sh` `mmfs_rename` 在 `mv` 后调用
+  改写并更新目标 `title:`；日志改为 `renamed: ... (wikilinks updated: N files)`。
+- Task 2：删 `scripts/lib/cli.sh`；`scripts/memovault.sh` 去掉 `. cli.sh`、
+  `mmcli_detect`、所有 cli 分支；`mm_preflight` 改为
+  `runtime=shell mode=fs vault=... search=rg|grep forced=0`；`MM_FORCE_FS=1`
+  时打废弃提示并忽略；`scripts/lib/classify.sh` `mm_promote` 只走 `mmfs_set_prop`。
+- Task 3：`scripts/e2e/run.sh` 单阶段；删 `--cli-only`、`register.sh`；
+  `--fs-only` 保留为 no-op 别名；`01-preflight.sh` 断言 `runtime=shell`；
+  `05-organize.sh` rename 后断言源笔记正文含新标题（旧 cli-only 红条件转绿）；
+  `skills/testing-memovault/SKILL.md` 去掉双模式前置、报告改 `shell: PASS|FAIL`。
+- Task 4：`VERSION` / `SKILL.md` frontmatter -> `0.5.0`；`install/install.sh`
+  `--force-fs` no-op + stderr 废弃提示；`--register-vault` 文案改为可选人用浏览。
+- Task 5：`README.md` / `README_CN.md` 删双运行时叙述、改 shell-only、加 WSL、
+  版本 0.5.0；`AGENTS.md` 项目身份与分层图改单 shell；`docs/ARCHITECTURE.md`
+  重写为单 shell 层；`docs/INSTALL.md` register 可选、force-fs 废弃、删「必须启
+  Obsidian」；`docs/DEVELOPMENT.md` e2e 指针改单阶段；`docs/CLI-REFERENCE.md`
+  文首声明非运行时依赖；`install/adapters/_protocol.md` 修 cli/fs 提及；
+  `SKILL.md` 正文 cli/fs 双模式段改为 shell-only；`docs/superpowers/specs/
+  2026-08-03-e2e-testing-design.md` 文首加 superseded 说明指向 2026-08-04 §8；
+  本条目追加 RIPER。
+
+### Review
+- `bash -n scripts/memovault.sh scripts/lib/*.sh scripts/e2e/*.sh
+  scripts/e2e/lib/*.sh scripts/e2e/suites/*.sh`：全部通过。
+- `./scripts/e2e/run.sh`：单阶段 shell exit 0；含 `rename updated wikilink`
+  PASS（旧 cli-only 红条件现为官方绿条件）。
+- `preflight` 在无 Obsidian 主机输出 `runtime=shell mode=fs vault=...
+  search=rg forced=0`，无 `bin=` / `app=`，无 GUI 启动。
+- `MM_FORCE_FS=1` 时 helper 打印一次废弃提示并继续；行为与未设置一致。
+- 命名合同（AGENTS.md §2）保持；无 emoji；无新公开环境变量；`MM_FORCE_FS`
+  废弃保留兼容。
+- 文档：README/AGENTS/ARCHITECTURE/INSTALL/DEVELOPMENT/CLI-REFERENCE/SKILL/
+  _protocol.md 均无「cli 运行时」叙述；2026-08-03 e2e 规格标注 superseded。
+- 已知局限（文档已声明）：行内代码中的 `[[...]]` 在 rename 改写中不被保护；
+  `move` 不改 basename 故不触发改写（与规格 §5.1 一致）。
+

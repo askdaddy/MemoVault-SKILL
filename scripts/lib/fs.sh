@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# lib/fs.sh - pure filesystem fallback layer for MemoVault.
-# All functions operate on $MM_VAULT (set by memovault.sh). They are used in
-# fs mode and also for capture operations in cli mode (the on-disk file is the
-# same one Obsidian reads). No emoji. Never write outside $MM_VAULT.
+# lib/fs.sh - filesystem runtime layer for MemoVault.
+# All functions operate on $MM_VAULT (set by memovault.sh). This is the only
+# runtime layer in the shell-only runtime; the on-disk file is what humans
+# browse in Obsidian. No emoji. Never write outside $MM_VAULT.
 
 # Print today's date (ISO). Defined here so this lib is self-describing; the
 # entry script also defines it and overrides nothing.
@@ -388,7 +388,7 @@ mmfs_move() {
     *) mm_die "refusing to move outside vault: $to" ;;
   esac
   mv "$file" "$realdest"
-  mm_log "moved (links NOT auto-updated in fs mode): ${file#"$realvault"/} -> ${realdest#"$realvault"/}"
+  mm_log "moved (basename preserved; links stay valid): ${file#"$realvault"/} -> ${realdest#"$realvault"/}"
 }
 
 mmfs_rename() {
@@ -398,6 +398,21 @@ mmfs_rename() {
   local clean; clean="$(mmfs_sanitize_title "$newname")"
   local dest; dest="$(dirname "$file")/$clean.md"
   [ "$file" = "$dest" ] && { mm_log "name unchanged"; return 0; }
+  # Capture old wikilink keys (stem, title, aliases) before the file moves.
+  local old_keys; old_keys="$(mm_wikilink_keys_for_file "$file")"
   mv "$file" "$dest"
-  mm_log "renamed (links NOT auto-updated in fs mode): ${file#"$MM_VAULT"/} -> ${dest#"$MM_VAULT"/}"
+  # Update the destination's frontmatter title to the new sanitized title.
+  mmfs_set_prop "$dest" title "$clean"
+  # Rewrite [[Old]] / [[Old|label]] across brain/ and daily/.
+  local files_updated=0
+  if [ -n "$old_keys" ]; then
+    local rewrite_out rewrite_rc
+    rewrite_out="$(printf '%s\n' "$old_keys" | mm_rewrite_wikilinks "$clean")"
+    rewrite_rc=$?
+    if [ "$rewrite_rc" -ne 0 ]; then
+      mm_die "rename: wikilink rewrite failed (note already renamed to ${dest#"$MM_VAULT"/})"
+    fi
+    files_updated="${rewrite_out#files_updated=}"
+  fi
+  mm_log "renamed: ${file#"$MM_VAULT"/} -> ${dest#"$MM_VAULT"/} (wikilinks updated: ${files_updated} files)"
 }

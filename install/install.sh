@@ -1,12 +1,77 @@
 #!/usr/bin/env bash
 # install/install.sh - install MemoVault into the canonical source location and
 # inject pointer stubs into one or more coding agents.
-# Bash 3.2 compatible. No emoji.
+# Dual-mode: local checkout uses this tree; curl|bash syncs a git cache then
+# re-execs. Bash 3.2 compatible. No emoji.
 
 set -uo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(cd "$HERE/.." && pwd)"
+mm_die() { printf 'install: %s\n' "$*" >&2; exit 1; }
+mm_log() { printf 'install: %s\n' "$*" >&2; }
+mm_note() { printf '%s\n' "$*"; }
+
+# True if $1 looks like a complete MemoVault-SKILL checkout.
+mm_is_full_tree() {
+  local r="${1:-}"
+  [ -n "$r" ] \
+    && [ -f "$r/VERSION" ] \
+    && [ -f "$r/SKILL.md" ] \
+    && [ -f "$r/install/targets.sh" ] \
+    && [ -f "$r/scripts/memovault.sh" ]
+}
+
+# When BASH_SOURCE is a real file (not stdin / curl|bash), resolve HERE + ROOT.
+HERE=""
+ROOT=""
+_mm_src="${BASH_SOURCE[0]:-}"
+if [ -n "$_mm_src" ] && [ -f "$_mm_src" ]; then
+  HERE="$(cd "$(dirname "$_mm_src")" && pwd)" || HERE=""
+  if [ -n "$HERE" ]; then
+    ROOT="$(cd "$HERE/.." && pwd)" || ROOT=""
+  fi
+fi
+unset _mm_src
+
+# Remote mode: no complete tree beside this script (typical: curl | bash).
+# Sync cache repo, then exec the real installer from that tree.
+if ! mm_is_full_tree "${ROOT:-}"; then
+  command -v git >/dev/null 2>&1 \
+    || mm_die "git is required for remote install; install git, or clone the repo and run ./install/install.sh locally"
+
+  _mm_cache="${MEMOVAULT_CACHE_REPO:-$HOME/.cache/memovault/repo}"
+  _mm_url="${MEMOVAULT_REPO_URL:-https://github.com/askdaddy/MemoVault-SKILL.git}"
+  _mm_ref="${MEMOVAULT_REF:-main}"
+
+  if [ -d "$_mm_cache/.git" ]; then
+    mm_note "remote: updating $_mm_cache ($_mm_ref)"
+    if git -C "$_mm_cache" fetch --depth 1 origin "$_mm_ref" 2>&1 | sed 's/^/   | /'; then
+      if git -C "$_mm_cache" checkout -q "$_mm_ref" 2>/dev/null \
+        || git -C "$_mm_cache" checkout -q -B "$_mm_ref" FETCH_HEAD 2>/dev/null; then
+        git -C "$_mm_cache" pull --ff-only origin "$_mm_ref" 2>&1 | sed 's/^/   | /' \
+          || mm_note "   warning: git pull failed; continuing with existing cache"
+      else
+        mm_note "   warning: checkout $_mm_ref failed; continuing with existing cache"
+      fi
+    else
+      mm_note "   warning: git fetch failed; continuing with existing cache"
+    fi
+  else
+    if [ -e "$_mm_cache" ]; then
+      mm_die "cache path exists but is not a git repo: $_mm_cache (remove it or set MEMOVAULT_CACHE_REPO)"
+    fi
+    mm_note "remote: cloning $_mm_url ($_mm_ref) -> $_mm_cache"
+    mkdir -p "$(dirname "$_mm_cache")"
+    git clone --depth 1 --branch "$_mm_ref" "$_mm_url" "$_mm_cache" \
+      || mm_die "git clone failed"
+  fi
+
+  mm_is_full_tree "$_mm_cache" \
+    || mm_die "remote cache is incomplete after sync: $_mm_cache"
+
+  mm_note "remote: re-exec $_mm_cache/install/install.sh"
+  exec "$_mm_cache/install/install.sh" "$@"
+fi
+
 . "$HERE/targets.sh"
 
 SOURCE="${MEMOVAULT_SOURCE:-$HOME/.agents/skills/memovault}"
@@ -24,19 +89,22 @@ DO_VERIFY=0
 DO_UPGRADE=0
 AGENTS=""
 
-mm_die() { printf 'install: %s\n' "$*" >&2; exit 1; }
-mm_log() { printf 'install: %s\n' "$*"; }
-mm_note() { printf '%s\n' "$*"; }
-
 mm_usage() {
   cat <<'USAGE'
 install.sh - install MemoVault and inject it into agents.
+
+One-line (no local clone; requires git):
+  curl -fsSL https://raw.githubusercontent.com/askdaddy/MemoVault-SKILL/main/install/install.sh | bash
 
 Usage:
   install.sh [--source <dir>] [--vault <dir>] [--force] [--dry-run]
              [--source-only] [--register-vault] [--inline] [--verify]
              [--upgrade]
-             (--agent <name> ... | --all)
+             [--agent <name> ... | --all]
+
+  With no flags, defaults to --all (install source + inject every supported
+  agent). When this script is not run from a full repo checkout (e.g. curl |
+  bash), it syncs ~/.cache/memovault/repo then re-execs from that tree.
 
 Options:
   --source <dir>     skill source dir (default ~/.agents/skills/memovault)
@@ -46,7 +114,7 @@ Options:
                      so you can browse it in the desktop app (not required for
                      the helper)
   --agent <name>     inject into one agent (repeatable)
-  --all              inject into every supported agent
+  --all              inject into every supported agent (default when no flags)
   --inline           embed the full SKILL.md instead of a pointer stub
   --force            overwrite existing stub files
   --force-fs         deprecated: ignored (runtime is always shell). Kept for
@@ -64,6 +132,11 @@ Options:
                      --all --force unless --agent is given.
   --no-pull          with --upgrade, skip the `git pull` step in the dev repo
   -h | --help        show this help
+
+Env (remote / curl | bash):
+  MEMOVAULT_CACHE_REPO   clone dir (default ~/.cache/memovault/repo)
+  MEMOVAULT_REPO_URL     git URL (default github.com/askdaddy/MemoVault-SKILL.git)
+  MEMOVAULT_REF          branch or tag (default main)
 
 Supported agents: claude, pi, codex, opencode, crush, gemini, cline, cursor,
 trae, copilot.
@@ -527,8 +600,8 @@ if [ "$DO_UPGRADE" = 1 ]; then
 fi
 
 if [ -z "$AGENTS" ] && [ "$DO_SOURCE_ONLY" = 0 ] && [ "$DO_REGISTER" = 0 ]; then
-  mm_usage
-  exit 0
+  # No flags: default to --all (needed for curl | bash with no args).
+  AGENTS="$(mm_target_list | tr '\n' ' ')"
 fi
 
 # always ensure source + vault + env for any real action
@@ -547,7 +620,7 @@ fi
 mm_note ""
 mm_note "done."
 mm_note "next steps:"
-mm_note "  - update Obsidian to installer 1.12.7+ and enable Settings -> General -> Command line interface"
 mm_note "  - restart your terminal and your agent(s) so the new skill/rules load"
 mm_note "  - verify injection: $ROOT/install/install.sh --verify"
 mm_note "  - verify helper: $HELPER preflight"
+mm_note "  - Obsidian desktop is optional (browse only); use --register-vault if desired"

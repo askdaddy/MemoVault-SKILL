@@ -11,7 +11,7 @@ same vault in Obsidian for browsing.
 | | |
 |---|---|
 | Skill name | `memovault` |
-| Version | `0.5.0` (see `VERSION`) |
+| Version | `0.5.1` (see `VERSION`) |
 | Skill source (after install) | `~/.agents/skills/memovault/` |
 | Knowledge vault | `~/.agent-memo-vault/` |
 | Vault override | `AGENT_MEMO_VAULT` |
@@ -61,9 +61,12 @@ native `.ps1` implementation is provided or maintained.
 ## Quick start
 
 ```bash
-# From this repository
-./install/install.sh --all              # skill source + inject all supported agents
-./install/install.sh --register-vault   # optional: register ~/.agent-memo-vault in Obsidian for browsing
+# One-line install (requires git); no flags => install source + all agents
+curl -fsSL https://raw.githubusercontent.com/askdaddy/MemoVault-SKILL/main/install/install.sh | bash
+
+# From a local checkout (same default)
+./install/install.sh
+./install/install.sh --register-vault   # optional: register vault in Obsidian for browsing
 ./install/install.sh --verify           # read-only health check
 ```
 
@@ -71,7 +74,8 @@ Useful variants:
 
 ```bash
 ./install/install.sh --agent cursor
-./install/install.sh --upgrade          # re-sync from this repo + re-inject agents
+# or: curl .../install/install.sh | bash -s -- --agent cursor
+./install/install.sh --upgrade          # re-sync from origin repo + re-inject agents
 ```
 
 `--force-fs` is accepted for backward compatibility but is a no-op: the runtime

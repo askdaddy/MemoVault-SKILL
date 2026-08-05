@@ -7,6 +7,8 @@ one or more coding agents.
 
 - Bash, `find`, `awk`, `mv`, `mktemp`. `rg` (ripgrep) recommended; `grep` is the
   fallback for search.
+- `git` is required for the one-line remote install (`curl | bash`). A local
+  checkout install does not need network git operations at install time.
 - `jq` only for the optional `--register-vault` step (the helper itself does not
   need it).
 - Obsidian is optional. Install it only if you want to browse the vault in the
@@ -28,12 +30,47 @@ maintained.
   are written. Override with `AGENT_MEMO_VAULT`.
 - **Adapter stub** = the small file dropped into each agent's rules/skill
   location. It points to the skill source so there is one source of truth.
+- **Cache repo** (remote install only) = `~/.cache/memovault/repo` by default.
+  The one-line installer clones or updates this tree, then runs the real
+  `install.sh` from it. `.source-origin` then points here so `upgrade` can
+  `git pull` the same cache.
 
-## 3. Commands
+## 3. One-line install
 
-Run from the repository root.
+No prior `git clone` of this repository is required:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/askdaddy/MemoVault-SKILL/main/install/install.sh | bash
+```
+
+With no flags, this defaults to `--all` (install skill source + inject every
+supported agent). Custom flags need `bash -s`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/askdaddy/MemoVault-SKILL/main/install/install.sh | bash -s -- --agent cursor
+curl -fsSL https://raw.githubusercontent.com/askdaddy/MemoVault-SKILL/main/install/install.sh | bash -s -- --source-only
+```
+
+How it works: if `install.sh` is not running from a full checkout, it syncs
+`$MEMOVAULT_CACHE_REPO` (default `~/.cache/memovault/repo`) from
+`$MEMOVAULT_REPO_URL` at `$MEMOVAULT_REF` (default `main`), then `exec`s that
+tree's `install/install.sh`. Running `./install/install.sh` inside a clone
+skips the remote sync and uses the working tree.
+
+| Env | Meaning | Default |
+|---|---|---|
+| `MEMOVAULT_CACHE_REPO` | Clone directory for remote mode | `~/.cache/memovault/repo` |
+| `MEMOVAULT_REPO_URL` | Git remote URL | `https://github.com/askdaddy/MemoVault-SKILL.git` |
+| `MEMOVAULT_REF` | Branch or tag | `main` |
+
+## 4. Commands
+
+Run from the repository root (or rely on the one-line path above).
+
+```bash
+# No flags: same as --all
+./install/install.sh
+
 # Install the skill source and scaffold the vault (no agent injection yet)
 ./install/install.sh --source-only
 
@@ -60,6 +97,7 @@ Run from the repository root.
 ```
 
 Flags:
+- (no flags): same as `--all`.
 - `--source-only`: copy skill to the source dir and scaffold the vault only.
 - `--register-vault`: optional. Adds `~/.agent-memo-vault` to `obsidian.json` as
   `agent-memo-vault` (id derived from the path) so you can browse the vault in
@@ -80,7 +118,7 @@ Flags:
 - `--stdout`: print the rendered body for one agent (for UI-only targets such as
   Trae global AI Rules) instead of writing a file; requires `--agent <name>`.
 
-## 4. Environment
+## 5. Environment
 
 `scripts/memovault.sh` defaults `AGENT_MEMO_VAULT` to `~/.agent-memo-vault`, so no
 global export is required. The helper sources `~/.agents/skills/memovault/env.sh`
@@ -105,7 +143,7 @@ required for the helper):
 echo 'source "$HOME/.agents/skills/memovault/env.sh"' >> ~/.zshrc
 ```
 
-## 5. Supported agents and locations
+## 6. Supported agents and locations
 
 Default install locations (personal/global). Override per agent by editing
 `install/targets.sh`.
@@ -137,7 +175,7 @@ Default install locations (personal/global). Override per agent by editing
 - For project-scoped agents (Copilot repo instructions, Cursor project rules),
   prefer running `install.sh` inside that repo with the project path.
 
-## 6. Verify
+## 7. Verify
 
 Seeing `~/.agents/skills/memovault/` on disk is not enough for always-on
 recall/capture. Cursor, Claude, and most other agents need their adapter
@@ -166,7 +204,7 @@ Then smoke-test the helper:
 
 Restart your agent after injection so it reloads skills/rules.
 
-## 7. Upgrade
+## 8. Upgrade
 
 An already-installed skill can be re-synced from its dev repo. The dev repo is
 the source of truth; there is no remote registry. It is auto-detected from
@@ -201,7 +239,7 @@ Notes:
   injection with `FORCE=1`. It is idempotent.
 - Upgrade never touches vault data (`$AGENT_MEMO_VAULT`).
 
-## 8. Uninstall
+## 9. Uninstall
 
 Remove the injected stub files listed by `--dry-run`, delete
 `~/.agents/skills/memovault/`, and (optionally) remove the `agent-memo-vault`

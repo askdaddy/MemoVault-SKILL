@@ -10,7 +10,7 @@ markdown 读写 vault 目录下同一批文件。人可以另外用 Obsidian 桌
 | | |
 |---|---|
 | Skill 名 | `memovault` |
-| 版本 | `0.5.0`（见 `VERSION`） |
+| 版本 | `0.5.1`（见 `VERSION`） |
 | 安装后 skill 源 | `~/.agents/skills/memovault/` |
 | 知识库 vault | `~/.agent-memo-vault/` |
 | Vault 覆盖变量 | `AGENT_MEMO_VAULT` |
@@ -55,9 +55,12 @@ Windows 仅通过 WSL2 支持。装好 WSL2 后，在 WSL shell 里跑同一套 
 ## 快速开始
 
 ```bash
-# 在本仓库根目录
-./install/install.sh --all              # 安装 skill 源 + 注入所有支持的 agent
-./install/install.sh --register-vault   # 可选：把 ~/.agent-memo-vault 注册进 Obsidian 仅供浏览
+# 一行安装（需要 git）；无参数 = 安装 skill 源并注入全部 agent
+curl -fsSL https://raw.githubusercontent.com/askdaddy/MemoVault-SKILL/main/install/install.sh | bash
+
+# 从本仓库安装（默认行为相同）
+./install/install.sh
+./install/install.sh --register-vault   # 可选：把 vault 注册进 Obsidian 仅供浏览
 ./install/install.sh --verify           # 只读健康检查
 ```
 
@@ -65,7 +68,8 @@ Windows 仅通过 WSL2 支持。装好 WSL2 后，在 WSL shell 里跑同一套 
 
 ```bash
 ./install/install.sh --agent cursor
-./install/install.sh --upgrade          # 从本仓库再同步并重新注入 agents
+# 或: curl .../install/install.sh | bash -s -- --agent cursor
+./install/install.sh --upgrade          # 从源仓库再同步并重新注入 agents
 ```
 
 `--force-fs` 为兼容旧脚本保留，但已是 no-op：运行时永远为 shell，没有可强制

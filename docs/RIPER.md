@@ -850,3 +850,41 @@ mode so distill provenance closes the loop.
 - 已知局限（文档已声明）：行内代码中的 `[[...]]` 在 rename 改写中不被保护；
   `move` 不改 basename 故不触发改写（与规格 §5.1 一致）。
 
+## 16. Entry: install.sh curl | bash 双模式远程安装 (2026-08-05)
+
+### Research
+- Quick start 要求先 clone 再跑 `./install/install.sh`；希望一行
+  `curl <raw install.sh> | bash`。
+- `install.sh` 依赖同树 `targets.sh` / adapters / templates，不能单文件自足；
+  管道执行时旁路无完整仓库。
+- 现有 upgrade 依赖 `.source-origin` 持久 git 树；适合落在
+  `~/.cache/memovault/repo`。
+- 无参时旧行为只打 usage，导致必须 `bash -s -- --all` 才能传参。
+
+### Innovate
+- A：独立 bootstrap.sh + 现有 install.sh。拒：用户要求改当前 install 脚本。
+- B：install.sh 一律远程。拒：本地未提交改动无法试装。
+- C（选）：install.sh 双模式；无完整树则 sync cache 后 `exec`；有则用工作树。
+  无参默认 `--all`，主路径为 `| bash`。
+
+### Plan
+- Spec: `docs/superpowers/specs/2026-08-05-remote-install-design.md`
+- Plan: `docs/superpowers/plans/2026-08-05-remote-install.md`
+- 版本 `0.5.1`
+
+### Execute
+- `install/install.sh`：完整树检测、远程 clone/更新、`exec` 重入；无参=`--all`；
+  usage / next steps 更新。
+- README / README_CN Quick start；`docs/INSTALL.md` 新增 one-line 节并重编号；
+  RIPER 本条；`VERSION` / `SKILL.md` -> `0.5.1`。
+
+### Review
+- `bash -n install/install.sh`：通过。
+- 本地 `./install/install.sh --dry-run --source-only`：走工作树，无 remote: 前缀。
+- 模拟 `bash -s -- --source-only < install.sh`（隔离 HOME + 本地 staged
+  `MEMOVAULT_REPO_URL`）：clone -> cache -> re-exec；`.source-origin` 指向
+  cache；`VERSION` 为 `0.5.1`。
+- 模拟 `| bash` 无参：默认注入全部 agent（含 cursor stub）。
+- 二次远程：`remote: updating` + re-exec 幂等。
+- 命名合同保持；无 emoji；无独立 bootstrap.sh。
+

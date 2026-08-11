@@ -196,10 +196,12 @@ mmfs_read() {
   local ref="$1"
   local file; file="$(mmfs_locate "$ref")"
   [ -n "$file" ] && [ -f "$file" ] || mm_die "note not found: $ref"
-  local t
+  local t k
   t="$(mmfs_get_prop "$file" title)"
   [ -n "$t" ] || t="$(basename "$file" .md)"
-  mm_obs_log "event=read" "title=$t"
+  k="$(mmfs_get_prop "$file" kind)"
+  [ -n "$k" ] || k="-"
+  mm_obs_log "event=read" "title=$t" "kind=$k"
   cat "$file"
 }
 

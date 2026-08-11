@@ -175,20 +175,39 @@ mm_vercmp() {
 
 # Resolve the dev repo path for upgrade. Priority:
 #   1. MEMOVAULT_DEV_REPO env var
-#   2. .source-origin recorded at install time
-#   3. the dev repo that contains this install.sh (best effort)
+#   2. This installer's ROOT, when its VERSION is newer than .source-origin
+#      (avoids a stale curl-cache origin blocking local checkout upgrades)
+#   3. .source-origin recorded at install time
+#   4. ROOT (best effort)
 # Print path or return 1.
 mm_resolve_dev_repo() {
-  local p
+  local p origin origin_ver root_ver rel
   p="${MEMOVAULT_DEV_REPO:-}"
   [ -n "$p" ] && [ -d "$p" ] && { printf '%s' "$p"; return 0; }
+
+  origin=""
   if [ -f "$SOURCE/.source-origin" ]; then
-    p="$(cat "$SOURCE/.source-origin" 2>/dev/null | tr -d '[:space:]')"
-    [ -n "$p" ] && [ -d "$p" ] && { printf '%s' "$p"; return 0; }
+    origin="$(cat "$SOURCE/.source-origin" 2>/dev/null | tr -d '[:space:]')"
   fi
-  # Fall back to the repo this installer lives in.
+
   if [ -f "$ROOT/VERSION" ]; then
+    root_ver="$(mm_version_of "$ROOT")"
+    if [ -n "$origin" ] && [ -d "$origin" ] && [ -f "$origin/VERSION" ]; then
+      origin_ver="$(mm_version_of "$origin")"
+      rel="$(mm_vercmp "$root_ver" "$origin_ver")"
+      if [ "$rel" = newer ]; then
+        printf '%s' "$ROOT"
+        return 0
+      fi
+      printf '%s' "$origin"
+      return 0
+    fi
     printf '%s' "$ROOT"
+    return 0
+  fi
+
+  if [ -n "$origin" ] && [ -d "$origin" ]; then
+    printf '%s' "$origin"
     return 0
   fi
   return 1

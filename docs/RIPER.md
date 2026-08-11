@@ -913,3 +913,25 @@ mode so distill provenance closes the loop.
 - `./scripts/e2e/run.sh`：pass=55 fail=0。
 - `bash -n` 相关脚本通过。
 
+## 14. Entry: Memory Loop 验收补丁 0.6.1（2026-08-11）
+
+### Research
+- 复盘 0.6.0：L1/L2 语义不完整；e2e 缺过滤/daily/ledger 失败/verify 无 templates；
+  本机 upgrade 被 stale `.source-origin`（curl cache 0.5.1）挡住。
+
+### Innovate
+- 补指标语义 + 验收门禁 + installer 优先较新 ROOT，不扩功能面。
+
+### Plan (approved via user「接受你的建议」)
+1. 本机 upgrade 到仓库版本
+2. e2e 补缺口
+3. health：domain 计数、provenance_pct、skill_reuse 限 skill、hint 行
+
+### Execute
+- `install/install.sh`：`mm_resolve_dev_repo` 在 ROOT VERSION 新于 origin 时优先 ROOT
+- `scripts/lib/obs.sh`：domain_*、provenance_pct、hints、skill_reuse 限 kind=skill；cite/read 记 kind
+- `scripts/e2e/suites/07-acceptance.sh`；VERSION/SKILL `0.6.1`
+
+### Review
+- `./scripts/e2e/run.sh`：pass=69 fail=0
+

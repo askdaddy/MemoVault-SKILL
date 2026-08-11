@@ -24,9 +24,14 @@ mm_obs_log() {
 }
 
 mm_obs_cite() {
-  local title="${1:-}"
+  local title="${1:-}" file kind="-"
   [ -n "$title" ] || mm_die "usage: cite <title>"
-  mm_obs_log "event=cite" "title=$title"
+  file="$(mmfs_locate "$title" 2>/dev/null || true)"
+  if [ -n "$file" ] && [ -f "$file" ]; then
+    kind="$(mmfs_get_prop "$file" kind)"
+    [ -n "$kind" ] || kind="-"
+  fi
+  mm_obs_log "event=cite" "title=$title" "kind=$kind"
   printf 'cited=%s\n' "$title"
 }
 
@@ -58,6 +63,11 @@ mm_obs_norm_title() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'
 }
 
+# Sanitize domain for health key domain_<name>=N
+mm_obs_domain_key() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]/_/g; s/^_//; s/_$//'
+}
+
 # Print YYYY-MM-DD that is N days before today (best-effort; macOS/Linux).
 mm_obs_days_ago() {
   local n="$1"
@@ -69,7 +79,6 @@ mm_obs_days_ago() {
     date -u -d "${n} days ago" +%Y-%m-%d
     return
   fi
-  # Fallback: today only window
   date -u +%Y-%m-%d
 }
 
@@ -84,13 +93,31 @@ mm_obs_field() {
   printf ''
 }
 
+# Return 0 if note has provenance (non-empty sources or body [[wikilink]]).
+mm_obs_note_has_provenance() {
+  local file="$1" src
+  src="$(mmfs_get_prop "$file" sources)"
+  case "$src" in
+    ''|'[]'|'[ ]') ;;
+    *) return 0 ;;
+  esac
+  if grep -q '\[\[' "$file" 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
 mm_obs_health() {
   mmfs_ensure_vault
   local notes_total=0 kind_atom=0 kind_raw=0 kind_scenario=0 kind_persona=0 kind_skill=0 kind_other=0
   local heat_seedling=0 heat_growing=0 heat_evergreen=0
   local inbox_raw_count=0 legacy_daily_count=0
   local orphan_count=0 orphan_pct=0
-  local f rel k h title
+  local structured=0 with_prov=0 provenance_pct=-1
+  local f rel k h title dom dom_key sources
+  local dom_tmp=""
+
+  dom_tmp="$(mktemp)"
 
   if [ -d "$MM_VAULT/brain" ]; then
     while IFS= read -r f; do
@@ -99,6 +126,7 @@ mm_obs_health() {
       rel="${f#"$MM_VAULT"/}"
       k="$(mmfs_get_prop "$f" kind)"
       h="$(mmfs_get_prop "$f" heat)"
+      dom="$(mmfs_get_prop "$f" domain)"
       [ -n "$h" ] || h="seedling"
       case "$k" in
         atom) kind_atom=$((kind_atom + 1)) ;;
@@ -113,16 +141,28 @@ mm_obs_health() {
         growing) heat_growing=$((heat_growing + 1)) ;;
         *) heat_seedling=$((heat_seedling + 1)) ;;
       esac
+      if [ -n "$dom" ]; then
+        dom_key="$(mm_obs_domain_key "$dom")"
+        [ -n "$dom_key" ] && printf '%s\n' "$dom_key" >> "$dom_tmp"
+      fi
       if [ "$k" = raw ]; then
         inbox_raw_count=$((inbox_raw_count + 1))
       else
         case "$rel" in
           brain/inbox/*) inbox_raw_count=$((inbox_raw_count + 1)) ;;
         esac
+        structured=$((structured + 1))
+        if mm_obs_note_has_provenance "$f"; then
+          with_prov=$((with_prov + 1))
+        fi
       fi
     done <<EOF
 $(find "$MM_VAULT/brain" -type f -name '*.md' 2>/dev/null)
 EOF
+  fi
+
+  if [ "$structured" -gt 0 ]; then
+    provenance_pct=$((with_prov * 100 / structured))
   fi
 
   if [ -d "$MM_VAULT/daily" ]; then
@@ -151,14 +191,20 @@ EOF
   local recall_hits_7d=0 capture_without_recall_7d=0
   local skill_reuse=0 recapture_dup=0 cite_rate=-1 promote_rate=-1
   local p line ev ts_day hits title_n titles_seen="" dup_titles=""
+  local ledger_ok=1
   since="$(mm_obs_days_ago 7)"
   p="$(mm_obs_ledger_path)"
   if [ -f "$p" ]; then
+    if ! [ -r "$p" ]; then
+      mm_log "obs: ledger unreadable; L1/L2 omitted"
+      ledger_ok=0
+    fi
+  fi
+  if [ "$ledger_ok" = 1 ] && [ -f "$p" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
       [ -n "$line" ] || continue
       ts_day="$(mm_obs_field "$line" ts | cut -c1-10)"
       [ -n "$ts_day" ] || continue
-      # string compare ISO dates
       [ "$ts_day" \< "$since" ] && continue
       ev="$(mm_obs_field "$line" event)"
       case "$ev" in
@@ -184,39 +230,34 @@ EOF
           ;;
         cite) cite_7d=$((cite_7d + 1)) ;;
         promote) promote_7d=$((promote_7d + 1)) ;;
-        read)
-          k="$(mm_obs_field "$line" kind)"
-          # skill_reuse counted below from title frequency of read+cite on skills — simplified:
-          ;;
       esac
     done < "$p"
-  fi
 
-  # capture_without_recall: if captures in window and zero recalls
-  if [ "$capture_7d" -gt 0 ] && [ "$recall_7d" -eq 0 ]; then
-    capture_without_recall_7d="$capture_7d"
-  fi
-
-  # skill_reuse: count read events whose title appears more than once (proxy)
-  if [ -f "$p" ]; then
+    # skill_reuse: distinct skill titles with read|cite count >= 2 in window
     skill_reuse="$(awk -v since="$since" '
       {
+        t=""; e=""; title=""; kind="-"
         for (i=1; i<=NF; i++) {
-          if ($i ~ /^ts=/) { t=substr($i,4,10) }
-          if ($i ~ /^event=/) { e=substr($i,7) }
-          if ($i ~ /^title=/) { title=substr($i,7) }
+          if ($i ~ /^ts=/) t=substr($i, 4, 10)
+          if ($i ~ /^event=/) e=substr($i, 7)
+          if ($i ~ /^title=/) title=substr($i, 7)
+          if ($i ~ /^kind=/) kind=substr($i, 6)
         }
         if (t < since) next
-        if (e == "read" || e == "cite") {
+        if ((e == "read" || e == "cite") && kind == "skill" && title != "") {
           c[title]++
         }
       }
       END {
         n=0
-        for (t in c) if (c[t] >= 2) n++
+        for (x in c) if (c[x] >= 2) n++
         print n+0
       }
     ' "$p")"
+  fi
+
+  if [ "$capture_7d" -gt 0 ] && [ "$recall_7d" -eq 0 ]; then
+    capture_without_recall_7d="$capture_7d"
   fi
 
   if [ "$recall_hits_7d" -gt 0 ]; then
@@ -236,10 +277,18 @@ EOF
   printf 'heat_seedling=%s\n' "$heat_seedling"
   printf 'heat_growing=%s\n' "$heat_growing"
   printf 'heat_evergreen=%s\n' "$heat_evergreen"
+  if [ -s "$dom_tmp" ]; then
+    sort "$dom_tmp" | uniq -c | while read -r cnt dname; do
+      [ -n "$dname" ] || continue
+      printf 'domain_%s=%s\n' "$dname" "$cnt"
+    done
+  fi
+  rm -f "$dom_tmp"
   printf 'inbox_raw_count=%s\n' "$inbox_raw_count"
   printf 'legacy_daily_count=%s\n' "$legacy_daily_count"
   printf 'orphan_count=%s\n' "$orphan_count"
   printf 'orphan_pct=%s\n' "$orphan_pct"
+  printf 'provenance_pct=%s\n' "$provenance_pct"
   printf 'recall_7d=%s\n' "$recall_7d"
   printf 'capture_7d=%s\n' "$capture_7d"
   printf 'capture_without_recall_7d=%s\n' "$capture_without_recall_7d"
@@ -247,4 +296,18 @@ EOF
   printf 'skill_reuse=%s\n' "${skill_reuse:-0}"
   printf 'promote_rate=%s\n' "$promote_rate"
   printf 'recapture_dup=%s\n' "$recapture_dup"
+
+  # Soft hints for agent self-check (not automatic vault mutations).
+  if [ "$inbox_raw_count" -ge 3 ]; then
+    printf 'hint=distill_inbox\n'
+  fi
+  if [ "$cite_rate" -ge 0 ] 2>/dev/null && [ "$cite_rate" -lt 40 ] 2>/dev/null && [ "$recall_hits_7d" -gt 0 ]; then
+    printf 'hint=low_cite_rate\n'
+  fi
+  if [ "$orphan_pct" -ge 50 ] && [ "$notes_total" -ge 3 ]; then
+    printf 'hint=high_orphan_pct\n'
+  fi
+  if [ "$provenance_pct" -ge 0 ] 2>/dev/null && [ "$provenance_pct" -lt 40 ] 2>/dev/null && [ "$structured" -ge 2 ]; then
+    printf 'hint=low_provenance\n'
+  fi
 }

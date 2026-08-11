@@ -963,3 +963,26 @@ mode so distill provenance closes the loop.
 - `./scripts/e2e/run.sh`：pass=81 fail=0
 - `bash -n` 相关脚本通过
 
+## 16. Entry: Upgrade 硬化 0.7.1（2026-08-11）
+
+### Research
+- 多次 upgrade 翻车：`install/` 未拷贝、双 resolver、curl cache 陈旧、
+  `env.sh` 被 shell `AGENT_MEMO_VAULT` 污染、older 仍继续升级。
+- 规格：`docs/superpowers/specs/2026-08-11-upgrade-hardening-design.md`（已批准，选源 B）。
+
+### Innovate
+- A 最小补丁 / B 统一内核 / C 大重构 → 选 B。
+
+### Plan (approved via user「批准」)
+- `install/lib/resolve.sh`；拷贝 `install/`；env 保留；闸门诚实；suite 09。
+
+### Execute
+- `install/lib/resolve.sh`：`mm_pick_upgrade_tree` / `mm_find_installer` /
+  `mm_read_env_vault_default`（pick 日志走 stderr）。
+- `install/install.sh`：拷贝 install；`--reset-env`；stable vault；older→die。
+- `scripts/memovault.sh`：source resolve；upgrade 多路径查找 installer。
+- `scripts/e2e/suites/09-upgrade.sh`；VERSION/文档 `0.7.1`。
+
+### Review
+- `./scripts/e2e/run.sh`：pass=87 fail=0
+

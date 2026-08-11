@@ -1,6 +1,6 @@
 ---
 name: memovault
-version: 0.7.0
+version: 0.7.1
 description: "Sink knowledge into a local Obsidian vault with bash. Use when the user wants to capture, save, record, or sink knowledge, notes, learnings, decisions, meeting takeaways, code snippets, or research into their memo vault / second brain / Obsidian knowledge base; or to create, edit, link, search, classify by domain, promote by heat, distill raw notes, recall ranked context, check vault health, or maintain backlinks and skill SOPs. Trigger phrases: 记到笔记 / 记一下 / 笔记里记一下 / 沉淀 / 沉淀一下 / 存到 vault / 存一下 / 存档 / 存到知识库 / 知识库 / 备忘录 / 双链 / 回链 / 按领域归档 / 提升热度 / 日记 / 每日笔记 / remember this / save this / save to vault / save to notes / memo it / note this / capture this / second brain / knowledge base / daily note / backlinks / link this note."
 ---
 
@@ -77,21 +77,19 @@ without Obsidian.
 ### Update and upgrade
 
 `preflight` also checks for skill updates: it compares the installed `VERSION`
-against the dev repo's `VERSION` (auto-detected from `.source-origin`, or set
-`MEMOVAULT_DEV_REPO`). If the dev repo is newer, a hint line reads
-`hint: update-available <installed> <dev> (run: memovault upgrade)`. Run the
-upgrade to re-sync the skill source from the dev repo and re-inject every agent
-stub:
+against the newest full tree (installer ROOT / `.source-origin` / git cache, or
+`MEMOVAULT_DEV_REPO`). If a newer tree exists, a hint line reads
+`hint: update-available <installed> <dev> (run: memovault upgrade)`. Run:
 
 ```bash
 "$MM" upgrade            # re-sync source + re-inject agents
-"$MM" upgrade --no-pull  # skip the `git pull` step in the dev repo
+"$MM" upgrade --no-pull  # skip git pull / cache refresh
+"$MM" upgrade --force    # re-sync when versions are equal
 ```
 
-The upgrade delegates to `install.sh --upgrade`. It is idempotent and safe to
-re-run. If the dev repo is a git repo it pulls first (`--ff-only`); pass
-`--no-pull` to skip that. The vault data (`$AGENT_MEMO_VAULT`) is never touched
-by upgrade.
+The upgrade delegates to `install.sh --upgrade` (the skill install includes
+`install/`). Existing `env.sh` vault defaults are preserved unless `--vault` /
+`--reset-env`. Vault note content is never modified by upgrade.
 
 ## 3. Classification scheme (follow exactly)
 

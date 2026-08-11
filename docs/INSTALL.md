@@ -206,38 +206,47 @@ Restart your agent after injection so it reloads skills/rules.
 
 ## 8. Upgrade
 
-An already-installed skill can be re-synced from its dev repo. The dev repo is
-the source of truth; there is no remote registry. It is auto-detected from
-`.source-origin` (written at install time), or set explicitly:
+Re-sync the installed skill from the **newest complete tree** among:
+
+1. `MEMOVAULT_DEV_REPO` (force override, if set and complete)
+2. Otherwise the newest `VERSION` among: installer ROOT, `.source-origin`, and
+   `~/.cache/memovault/repo` (tie-break: ROOT > origin > cache)
+
+Shared logic lives in `install/lib/resolve.sh`. The skill install copies the
+whole `install/` directory so `memovault upgrade` can find the installer.
 
 ```bash
-export MEMOVAULT_DEV_REPO="$HOME/Workspace/MemoVault-SKILL"
+export MEMOVAULT_DEV_REPO="$HOME/Workspace/MemoVault-SKILL"   # optional force
 ```
 
-From anywhere (delegates to `install.sh --upgrade`):
+From anywhere:
 
 ```bash
 ~/.agents/skills/memovault/scripts/memovault.sh upgrade
 ~/.agents/skills/memovault/scripts/memovault.sh upgrade --no-pull
+~/.agents/skills/memovault/scripts/memovault.sh upgrade --force
 ```
 
-Or directly from the dev repo:
+Or from a checkout:
 
 ```bash
-./install/install.sh --upgrade            # pull (if git) + re-sync + re-inject
-./install/install.sh --upgrade --no-pull  # skip the `git pull` step
+./install/install.sh --upgrade            # refresh cache best-effort + re-sync
+./install/install.sh --upgrade --no-pull  # skip git pull / cache refresh
 ./install/install.sh --upgrade --dry-run  # preview
+./install/install.sh --upgrade --vault ~/my-vault   # rewrite env.sh default
+./install/install.sh --upgrade --reset-env          # rewrite env to ~/.agent-memo-vault
 ```
 
 Notes:
-- `preflight` prints `hint: update-available <installed> <dev> (run: memovault
-  upgrade)` when the installed `VERSION` is older than the dev repo's.
-- If the dev repo is a git repo, `upgrade` runs `git pull --ff-only` first; pass
-  `--no-pull` to skip it. Git is optional; the installer falls back to local
-  files if git is absent or the pull fails.
-- Upgrade re-runs source copy, vault scaffold, env write, and every agent
-  injection with `FORCE=1`. It is idempotent.
-- Upgrade never touches vault data (`$AGENT_MEMO_VAULT`).
+- `preflight` hints when a newer full tree is available vs installed `VERSION`.
+- Version gate: newer upgrades; equal needs `--force`; older **refuses** unless
+  `--force` (downgrade).
+- Injection always overwrites stubs during upgrade; that is separate from the
+  version gate.
+- Existing `env.sh` is **kept** by default so a polluted shell
+  `AGENT_MEMO_VAULT` cannot rewrite your vault path. Use `--vault` or
+  `--reset-env` to change it.
+- Upgrade never deletes vault notes.
 
 ## 9. Uninstall
 

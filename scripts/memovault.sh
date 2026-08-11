@@ -21,18 +21,18 @@ mm_resolve_root() {
   printf '%s' "$(cd "$(dirname "$src")" && pwd)"
 }
 
-# Print the version string from a VERSION file, or empty if missing.
+# Fallback version helpers when install/lib/resolve.sh is not yet installed.
 mm_version_of() {
   local dir="$1"
   [ -f "$dir/VERSION" ] && { cat "$dir/VERSION" 2>/dev/null | tr -d '[:space:]'; return; }
   printf ''
 }
 
-# Compare two dotted versions. Print newer|equal|older (a vs b).
 mm_vercmp() {
   local a="$1" b="$2"
   [ "$a" = "$b" ] && { printf 'equal'; return; }
   local IFS='.'
+  # shellcheck disable=SC2086
   set -- $a $b
   local a1="${1:-0}" a2="${2:-0}" a3="${3:-0}" b1="${4:-0}" b2="${5:-0}" b3="${6:-0}"
   if [ "$a1" -gt "$b1" ] 2>/dev/null; then printf 'newer'; return; fi
@@ -44,11 +44,6 @@ mm_vercmp() {
   printf 'equal'
 }
 
-# Resolve the dev repo for update checks. Priority:
-#   1. MEMOVAULT_DEV_REPO env var
-#   2. .source-origin recorded at install time (lives in the source dir)
-#   3. the repo this helper lives in (best effort, for dev runs)
-# Print path or return 1.
 mm_resolve_dev_repo() {
   local p
   p="${MEMOVAULT_DEV_REPO:-}"
@@ -64,11 +59,20 @@ mm_resolve_dev_repo() {
   return 1
 }
 
-# Check for an available update. Print "update-available <installed> <dev>" or
-# nothing. Returns 0 if an update is available, 1 otherwise.
 mm_check_update() {
   local dev inst_ver dev_ver rel
-  dev="$(mm_resolve_dev_repo 2>/dev/null)" || return 1
+  if type mm_pick_upgrade_tree >/dev/null 2>&1; then
+    export MM_RESOLVE_SOURCE="$MM_SOURCE"
+    export MM_RESOLVE_ROOT=""
+    MM_RESOLVE_NO_PULL=1
+    export MM_RESOLVE_NO_PULL
+    # Quiet pick: temporarily stub mm_note
+    mm_note() { :; }
+    dev="$(mm_pick_upgrade_tree 2>/dev/null)" || { unset -f mm_note 2>/dev/null; return 1; }
+    unset -f mm_note 2>/dev/null || true
+  else
+    dev="$(mm_resolve_dev_repo 2>/dev/null)" || return 1
+  fi
   [ -f "$dev/VERSION" ] || return 1
   inst_ver="$(mm_version_of "$MM_SOURCE")"
   dev_ver="$(mm_version_of "$dev")"
@@ -84,10 +88,13 @@ mm_check_update() {
 MM_ROOT="$(mm_resolve_root)"
 MM_SOURCE="$(cd "$MM_ROOT/.." && pwd)"            # skill source dir
 
-# Source runtime config (vault path, headless mode) so it applies to every
-# caller. Agents rarely export these themselves; without this, env.sh would only
-# take effect if the caller's shell had sourced it first. Each var uses
-# ${VAR:-...} so a caller may still override per invocation.
+# Prefer shared resolve helpers once install/ is present (0.7.1+).
+if [ -f "$MM_SOURCE/install/lib/resolve.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$MM_SOURCE/install/lib/resolve.sh"
+fi
+
+# Source runtime config (vault path) so it applies to every caller.
 [ -f "$MM_SOURCE/env.sh" ] && . "$MM_SOURCE/env.sh"
 
 MM_VAULT="${AGENT_MEMO_VAULT:-$HOME/.agent-memo-vault}"
@@ -125,7 +132,6 @@ mm_preflight() {
   local search; search="$(mm_detect_search)"
   printf 'runtime=shell mode=fs vault=%s search=%s forced=0\n' "$MM_VAULT" "$search"
   printf 'source=%s\n' "$MM_SOURCE"
-  # Update check: compare installed VERSION vs dev repo VERSION.
   local upd
   if upd="$(mm_check_update 2>/dev/null)"; then
     printf 'hint: %s (run: memovault upgrade)\n' "$upd" >&2
@@ -148,14 +154,26 @@ mm_cmd_new() {
   mmfs_new "$domain" "$title" "$tags" "$body" "$kind"
 }
 
-# Upgrade: delegate to install.sh --upgrade. The installer re-syncs the source
-# from the dev repo (auto-detected or via MEMOVAULT_DEV_REPO), optionally pulls
-# from git, and re-injects all agent stubs.
+# Upgrade: delegate to install.sh --upgrade (SOURCE, then origin, then cache).
 mm_cmd_upgrade() {
-  local installer="$MM_SOURCE/install/install.sh"
-  if [ ! -x "$installer" ]; then
-    mm_die "upgrade: installer not found at $installer (is the source dir intact?)"
+  local installer=""
+  if type mm_find_installer >/dev/null 2>&1; then
+    installer="$(mm_find_installer "$MM_SOURCE")" || true
   fi
+  if [ -z "$installer" ]; then
+    if [ -f "$MM_SOURCE/install/install.sh" ]; then
+      installer="$MM_SOURCE/install/install.sh"
+    elif [ -f "$MM_SOURCE/.source-origin" ]; then
+      local origin
+      origin="$(cat "$MM_SOURCE/.source-origin" 2>/dev/null | tr -d '[:space:]')"
+      [ -n "$origin" ] && [ -f "$origin/install/install.sh" ] \
+        && installer="$origin/install/install.sh"
+    fi
+  fi
+  if [ -z "$installer" ] || [ ! -f "$installer" ]; then
+    mm_die "upgrade: installer not found (re-run curl|bash install or ./install/install.sh --upgrade from a checkout)"
+  fi
+  chmod +x "$installer" 2>/dev/null || true
   exec "$installer" --upgrade "$@"
 }
 
@@ -165,7 +183,7 @@ memovault - sink knowledge into the local memo vault.
 
 Resolve:
   preflight                     show runtime (shell/fs), vault, search backend
-  upgrade                       re-sync from the dev repo and re-inject agents
+  upgrade                       re-sync from newest full tree; re-inject agents
                                 (delegates to install.sh --upgrade)
 
 Capture / edit:

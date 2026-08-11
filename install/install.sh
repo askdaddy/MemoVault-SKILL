@@ -73,9 +73,16 @@ if ! mm_is_full_tree "${ROOT:-}"; then
 fi
 
 . "$HERE/targets.sh"
+# Shared resolve helpers (version pick, env vault parse). Re-defines mm_is_full_tree.
+# shellcheck source=lib/resolve.sh
+. "$HERE/lib/resolve.sh"
 
 SOURCE="${MEMOVAULT_SOURCE:-$HOME/.agents/skills/memovault}"
-VAULT="${AGENT_MEMO_VAULT:-$HOME/.agent-memo-vault}"
+# Stable vault target: never bake ambient AGENT_MEMO_VAULT into env.sh on
+# upgrade. CLI --vault wins; else existing env.sh default; else home default.
+VAULT="$HOME/.agent-memo-vault"
+VAULT_CLI=0
+RESET_ENV=0
 HELPER="$SOURCE/scripts/memovault.sh"
 
 DRY_RUN=0
@@ -125,12 +132,13 @@ Options:
   --verify           check source, vault, and always-on injection status
                      (no writes). Optional --agent to limit which agents to check;
                      default checks every supported agent. Exit 1 if any check fails.
-  --upgrade          re-sync the installed source from the dev repo and re-inject
-                     all agents. The dev repo is auto-detected from
-                     .source-origin, or set via MEMOVAULT_DEV_REPO. If the dev repo
-                     is a git repo, pull first (use --no-pull to skip). Implies
-                     --all --force unless --agent is given.
-  --no-pull          with --upgrade, skip the `git pull` step in the dev repo
+  --upgrade          re-sync installed source from the newest full tree among
+                     installer ROOT, .source-origin, and the git cache (or
+                     MEMOVAULT_DEV_REPO). Injection always overwrites stubs.
+                     Version equal/older needs --force (older refuses without it).
+                     Existing env.sh is preserved unless --vault / --reset-env.
+  --no-pull          with --upgrade, skip git pull / cache refresh
+  --reset-env        rewrite env.sh (default vault ~/.agent-memo-vault, or --vault)
   -h | --help        show this help
 
 Env (remote / curl | bash):
@@ -146,71 +154,25 @@ memory. Cursor/Claude/etc. need their adapter injection (see --verify).
 USAGE
 }
 
-# --- version helpers -------------------------------------------------------
+# --- vault / env helpers ---------------------------------------------------
 
-# Print the version string from a VERSION file, or empty if missing.
-mm_version_of() {
-  local dir="$1"
-  [ -f "$dir/VERSION" ] && { cat "$dir/VERSION" 2>/dev/null | tr -d '[:space:]'; return; }
-  printf ''
-}
-
-# Compare two dotted versions. Print "newer"|"equal"|"older".
-# Usage: mm_vercmp <a> <b>  -> echoes relation of a vs b.
-mm_vercmp() {
-  local a="$1" b="$2"
-  if [ "$a" = "$b" ]; then printf 'equal'; return; fi
-  # Split on '.', compare numerically left to right.
-  local IFS='.'
-  set -- $a $b
-  local a1="${1:-0}" a2="${2:-0}" a3="${3:-0}" b1="${4:-0}" b2="${5:-0}" b3="${6:-0}"
-  if [ "$a1" -gt "$b1" ] 2>/dev/null; then printf 'newer'; return; fi
-  if [ "$a1" -lt "$b1" ] 2>/dev/null; then printf 'older'; return; fi
-  if [ "$a2" -gt "$b2" ] 2>/dev/null; then printf 'newer'; return; fi
-  if [ "$a2" -lt "$b2" ] 2>/dev/null; then printf 'older'; return; fi
-  if [ "$a3" -gt "$b3" ] 2>/dev/null; then printf 'newer'; return; fi
-  if [ "$a3" -lt "$b3" ] 2>/dev/null; then printf 'older'; return; fi
-  printf 'equal'
-}
-
-# Resolve the dev repo path for upgrade. Priority:
-#   1. MEMOVAULT_DEV_REPO env var
-#   2. This installer's ROOT, when its VERSION is newer than .source-origin
-#      (avoids a stale curl-cache origin blocking local checkout upgrades)
-#   3. .source-origin recorded at install time
-#   4. ROOT (best effort)
-# Print path or return 1.
-mm_resolve_dev_repo() {
-  local p origin origin_ver root_ver rel
-  p="${MEMOVAULT_DEV_REPO:-}"
-  [ -n "$p" ] && [ -d "$p" ] && { printf '%s' "$p"; return 0; }
-
-  origin=""
-  if [ -f "$SOURCE/.source-origin" ]; then
-    origin="$(cat "$SOURCE/.source-origin" 2>/dev/null | tr -d '[:space:]')"
-  fi
-
-  if [ -f "$ROOT/VERSION" ]; then
-    root_ver="$(mm_version_of "$ROOT")"
-    if [ -n "$origin" ] && [ -d "$origin" ] && [ -f "$origin/VERSION" ]; then
-      origin_ver="$(mm_version_of "$origin")"
-      rel="$(mm_vercmp "$root_ver" "$origin_ver")"
-      if [ "$rel" = newer ]; then
-        printf '%s' "$ROOT"
-        return 0
-      fi
-      printf '%s' "$origin"
-      return 0
-    fi
-    printf '%s' "$ROOT"
+# Set VAULT for this run without using ambient AGENT_MEMO_VAULT pollution.
+# Call after arg parse. Uses: --vault | existing env.sh | $HOME/.agent-memo-vault
+mm_resolve_stable_vault() {
+  local from_env
+  if [ "$VAULT_CLI" = 1 ]; then
     return 0
   fi
-
-  if [ -n "$origin" ] && [ -d "$origin" ]; then
-    printf '%s' "$origin"
+  if [ "$RESET_ENV" = 1 ]; then
+    VAULT="$HOME/.agent-memo-vault"
     return 0
   fi
-  return 1
+  from_env="$(mm_read_env_vault_default "$SOURCE/env.sh")"
+  if [ -n "$from_env" ]; then
+    VAULT="$from_env"
+    return 0
+  fi
+  VAULT="$HOME/.agent-memo-vault"
 }
 
 # --- actions ---------------------------------------------------------------
@@ -218,9 +180,16 @@ mm_resolve_dev_repo() {
 mm_install_source() {
   mm_note "1) install skill source -> $SOURCE"
   if [ "$DRY_RUN" = 1 ]; then return 0; fi
+  if [ "$ROOT" = "$SOURCE" ]; then
+    mm_note "   ROOT equals SOURCE; skip copy (already in place)"
+    chmod +x "$SOURCE/scripts/memovault.sh" 2>/dev/null || true
+    chmod +x "$SOURCE/install/install.sh" 2>/dev/null || true
+    printf '%s\n' "$ROOT" > "$SOURCE/.source-origin" 2>/dev/null || true
+    return 0
+  fi
   mkdir -p "$SOURCE"
   local item
-  for item in SKILL.md AGENTS.md CLAUDE.md README.md VERSION scripts templates docs; do
+  for item in SKILL.md AGENTS.md CLAUDE.md README.md VERSION scripts templates docs install; do
     [ -e "$ROOT/$item" ] || continue
     if [ -d "$ROOT/$item" ]; then
       rm -rf "$SOURCE/$item"
@@ -230,8 +199,9 @@ mm_install_source() {
     fi
   done
   chmod +x "$SOURCE/scripts/memovault.sh" 2>/dev/null || true
+  chmod +x "$SOURCE/install/install.sh" 2>/dev/null || true
   # Record where the source was copied from, so `upgrade` can auto-detect the
-  # dev repo and compare versions. Overriden by --source / MEMOVAULT_DEV_REPO.
+  # tree and compare versions. Overridden by MEMOVAULT_DEV_REPO.
   printf '%s\n' "$ROOT" > "$SOURCE/.source-origin" 2>/dev/null || true
 }
 
@@ -245,7 +215,12 @@ mm_scaffold_vault() {
   done
 }
 
+# Write env.sh. Preserves existing file unless --vault, --reset-env, or missing.
 mm_write_env() {
+  if [ -f "$SOURCE/env.sh" ] && [ "$VAULT_CLI" = 0 ] && [ "$RESET_ENV" = 0 ]; then
+    mm_note "3) keep env snippet -> $SOURCE/env.sh (use --vault / --reset-env to rewrite)"
+    return 0
+  fi
   mm_note "3) write env snippet -> $SOURCE/env.sh"
   if [ "$DRY_RUN" = 1 ]; then return 0; fi
   cat > "$SOURCE/env.sh" <<EOF
@@ -485,24 +460,24 @@ mm_verify() {
   return 0
 }
 
-# Upgrade: re-sync the installed source from the dev repo and re-inject agents.
-# Steps:
-#   1. resolve the dev repo (MEMOVAULT_DEV_REPO / .source-origin / this repo)
-#   2. compare VERSION; if dev is newer (or --force), proceed
-#   3. if dev repo is a git repo, `git pull` (unless --no-pull)
-#   4. re-run install_source + scaffold + env + injection (FORCE=1)
+# Upgrade: re-sync from newest full tree and re-inject agents.
 mm_upgrade() {
   local dev
-  dev="$(mm_resolve_dev_repo)" || mm_die "upgrade: cannot locate dev repo (set MEMOVAULT_DEV_REPO or run install.sh from the dev repo)"
-  mm_note "upgrade: dev repo = $dev"
+  if [ "$NO_PULL" = 1 ]; then
+    MM_RESOLVE_NO_PULL=1
+  fi
+  export MM_RESOLVE_SOURCE="$SOURCE"
+  export MM_RESOLVE_ROOT="$ROOT"
+  dev="$(mm_pick_upgrade_tree)" \
+    || mm_die "upgrade: cannot locate a full tree (set MEMOVAULT_DEV_REPO or run from a checkout / refresh cache)"
 
   local inst_ver dev_ver rel
   inst_ver="$(mm_version_of "$SOURCE")"
   dev_ver="$(mm_version_of "$dev")"
-  mm_note "upgrade: installed=$inst_ver dev=$dev_ver"
+  mm_note "upgrade: installed=$inst_ver picked=$dev_ver"
 
   if [ -z "$dev_ver" ]; then
-    mm_die "upgrade: dev repo has no VERSION file at $dev"
+    mm_die "upgrade: picked tree has no VERSION at $dev"
   fi
   if [ -z "$inst_ver" ]; then
     mm_note "upgrade: installed has no VERSION; proceeding (first install)"
@@ -518,31 +493,37 @@ mm_upgrade() {
           return 0
         fi
         ;;
-      older) mm_note "upgrade: dev ($dev_ver) is older than installed ($inst_ver); use --force to downgrade" ;;
+      older)
+        if [ "$FORCE" = 1 ]; then
+          mm_note "upgrade: picked ($dev_ver) is older than installed ($inst_ver); forcing downgrade"
+        else
+          mm_die "upgrade: picked ($dev_ver) is older than installed ($inst_ver); refuse without --force"
+        fi
+        ;;
     esac
   fi
 
-  # Optionally pull from git.
+  # Optionally pull from git on the picked tree.
   if [ "$NO_PULL" = 0 ] && [ -d "$dev/.git" ]; then
     if command -v git >/dev/null 2>&1; then
       mm_note "upgrade: git pull in $dev"
       if [ "$DRY_RUN" = 1 ]; then
         mm_note "   (dry-run) would run: git -C $dev pull --ff-only"
       else
-        git -C "$dev" pull --ff-only 2>&1 | sed 's/^/   | /' || mm_note "   git pull failed or no upstream; continuing with local files"
-        # Re-read version after pull.
+        git -C "$dev" pull --ff-only 2>&1 | sed 's/^/   | /' \
+          || mm_note "   git pull failed or no upstream; continuing with local files"
         dev_ver="$(mm_version_of "$dev")"
-        mm_note "upgrade: dev version after pull = $dev_ver"
+        mm_note "upgrade: picked version after pull = $dev_ver"
       fi
     else
       mm_note "upgrade: git not found; skipping pull (using local files in $dev)"
     fi
   fi
 
-  # Re-point ROOT at the dev repo so install_source copies from there.
   ROOT="$dev"
   HELPER="$SOURCE/scripts/memovault.sh"
   FORCE=1
+  mm_resolve_stable_vault
 
   mm_install_source
   mm_scaffold_vault
@@ -567,7 +548,7 @@ NO_PULL=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --source) SOURCE="$2"; shift 2 ;;
-    --vault) VAULT="$2"; shift 2 ;;
+    --vault) VAULT="$2"; VAULT_CLI=1; shift 2 ;;
     --agent) AGENTS="$AGENTS $2"; shift 2 ;;
     --all) AGENTS="$(mm_target_list | tr '\n' ' ')"; shift ;;
     --source-only) DO_SOURCE_ONLY=1; shift ;;
@@ -584,12 +565,14 @@ while [ $# -gt 0 ]; do
     --verify) DO_VERIFY=1; shift ;;
     --upgrade) DO_UPGRADE=1; shift ;;
     --no-pull) NO_PULL=1; shift ;;
+    --reset-env) RESET_ENV=1; shift ;;
     -h|--help) mm_usage; exit 0 ;;
     *) mm_die "unknown flag: $1 (try --help)" ;;
   esac
 done
 
 HELPER="$SOURCE/scripts/memovault.sh"
+mm_resolve_stable_vault
 
 # Render-only mode: print the composed body for an agent and exit. Used for
 # UI-only targets (e.g. Trae global AI Rules) where there is no file to write.
@@ -612,7 +595,7 @@ if [ "$DO_VERIFY" = 1 ]; then
   exit $?
 fi
 
-# Upgrade: re-sync from dev repo and re-inject.
+# Upgrade: re-sync from picked tree and re-inject.
 if [ "$DO_UPGRADE" = 1 ]; then
   mm_upgrade
   exit $?

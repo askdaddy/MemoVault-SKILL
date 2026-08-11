@@ -11,7 +11,7 @@ same vault in Obsidian for browsing.
 | | |
 |---|---|
 | Skill name | `memovault` |
-| Version | `0.7.0` (see `VERSION`) |
+| Version | `0.7.1` (see `VERSION`) |
 | Skill source (after install) | `~/.agents/skills/memovault/` |
 | Knowledge vault | `~/.agent-memo-vault/` |
 | Vault override | `AGENT_MEMO_VAULT` |

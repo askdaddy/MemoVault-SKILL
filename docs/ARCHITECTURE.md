@@ -157,30 +157,30 @@ never touched.
 
 ### Version source resolution
 
-The "dev repo" is the authoritative copy of the skill (this repository). It is
-resolved, in priority order:
+Upgrade picks the **newest complete tree** (strategy B):
 
-1. `MEMOVAULT_DEV_REPO` env var if set.
-2. `.source-origin`, a one-line file written into the source dir at install time
-   (`mm_install_source` records the repo root it copied from).
-3. The repository the installer is running from, as a last resort.
+1. `MEMOVAULT_DEV_REPO` if set and `mm_is_full_tree`.
+2. Else refresh `~/.cache/memovault/repo` best-effort, then choose the newest
+   `VERSION` among installer `ROOT`, `$SOURCE/.source-origin`, and the cache.
+   Ties: ROOT > origin > cache.
 
-The installed `VERSION` is compared to the dev repo `VERSION` with `mm_vercmp`
-(semantic, dot-separated). If the dev repo is newer, `preflight` prints an
-`update-available <installed> <dev>` hint; `upgrade` performs the re-sync.
+Helpers live in `install/lib/resolve.sh` (copied into the skill install). The
+helper `upgrade` subcommand locates `install/install.sh` under the skill,
+`.source-origin`, or the cache, then `exec`s `--upgrade`.
+
+Version gate (`mm_vercmp`): newer → upgrade; equal → need `--force`; older →
+refuse unless `--force`.
+
+`env.sh`: preserved on upgrade unless `--vault` / `--reset-env`. Ambient
+`AGENT_MEMO_VAULT` is not baked into `env.sh` during upgrade.
 
 ### Flow
 
-1. Resolve the dev repo (above).
-2. Compare versions; if the dev repo is newer (or `--force`), proceed.
-3. If the dev repo is a git repo, run `git pull --ff-only` (skippable with
-   `--no-pull`). Git is optional; on failure the installer continues with the
-   local files.
-4. Re-run `mm_install_source` + `mm_scaffold_vault` + `mm_write_env` + agent
-   injection with `FORCE=1`. Idempotent and safe to re-run.
-
-The helper's `upgrade` subcommand simply `exec`s `install.sh --upgrade`, so the
-installer is the single code path for both fresh install and upgrade.
+1. Pick upgrade tree (above); log `upgrade: picked=...`.
+2. Compare versions; apply the gate.
+3. Optional `git pull` on the picked tree (`--no-pull` skips).
+4. Re-run `mm_install_source` (includes `install/`) + scaffold + conditional
+   `mm_write_env` + agent injection with `FORCE=1`.
 
 ## 10. Layered memory (protocol)
 

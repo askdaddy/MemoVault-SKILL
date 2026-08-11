@@ -10,7 +10,7 @@ markdown 读写 vault 目录下同一批文件。人可以另外用 Obsidian 桌
 | | |
 |---|---|
 | Skill 名 | `memovault` |
-| 版本 | `0.7.0`（见 `VERSION`） |
+| 版本 | `0.7.1`（见 `VERSION`） |
 | 安装后 skill 源 | `~/.agents/skills/memovault/` |
 | 知识库 vault | `~/.agent-memo-vault/` |
 | Vault 覆盖变量 | `AGENT_MEMO_VAULT` |

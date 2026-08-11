@@ -35,6 +35,122 @@ mm_obs_cite() {
   printf 'cited=%s\n' "$title"
 }
 
+mm_obs_feedback() {
+  local title="${1:-}" score="${2:-}"
+  [ -n "$title" ] && [ -n "$score" ] || mm_die "usage: feedback <title> +1|-1"
+  case "$score" in
+    +1|-1) ;;
+    *) mm_die "feedback score must be +1 or -1" ;;
+  esac
+  mm_obs_log "event=feedback" "title=$title" "score=$score"
+  printf 'feedback=%s score=%s\n' "$title" "$score"
+}
+
+# Suggest promote/dedupe based on ledger + light vault scan. No mutations.
+mm_obs_suggest() {
+  mmfs_ensure_vault
+  local since p line ev ts_day title score
+  local cites_file reads_file fb_file
+  since="$(mm_obs_days_ago 30)"
+  p="$(mm_obs_ledger_path)"
+  cites_file="$(mktemp)"
+  reads_file="$(mktemp)"
+  fb_file="$(mktemp)"
+  if [ -f "$p" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      [ -n "$line" ] || continue
+      ts_day="$(mm_obs_field "$line" ts | cut -c1-10)"
+      [ -n "$ts_day" ] || continue
+      [ "$ts_day" \< "$since" ] && continue
+      ev="$(mm_obs_field "$line" event)"
+      title="$(mm_obs_field "$line" title)"
+      [ -n "$title" ] || continue
+      case "$ev" in
+        cite) printf '%s\n' "$title" >> "$cites_file" ;;
+        read) printf '%s\n' "$title" >> "$reads_file" ;;
+        feedback)
+          score="$(mm_obs_field "$line" score)"
+          printf '%s\t%s\n' "$title" "$score" >> "$fb_file"
+          ;;
+      esac
+    done < "$p"
+  fi
+
+  # Aggregate counts per title (titles may contain spaces; avoid uniq -c $2)
+  local counts_tmp
+  counts_tmp="$(mktemp)"
+  if [ -s "$cites_file" ]; then
+    sort "$cites_file" | uniq -c | while IFS= read -r line; do
+      line="${line#"${line%%[![:space:]]*}"}"
+      cite_n="${line%% *}"
+      title="${line#* }"
+      [ -n "$title" ] || continue
+      printf '%s\tcite\t%s\n' "$title" "$cite_n"
+    done >> "$counts_tmp"
+  fi
+  if [ -s "$reads_file" ]; then
+    sort "$reads_file" | uniq -c | while IFS= read -r line; do
+      line="${line#"${line%%[![:space:]]*}"}"
+      read_n="${line%% *}"
+      title="${line#* }"
+      [ -n "$title" ] || continue
+      printf '%s\tread\t%s\n' "$title" "$read_n"
+    done >> "$counts_tmp"
+  fi
+
+  local titles_seen="" cite_n read_n fb_net heat file bl
+  while IFS= read -r title; do
+    [ -n "$title" ] || continue
+    case "$titles_seen" in *"|$title|"*) continue ;; esac
+    titles_seen="${titles_seen}|$title|"
+    cite_n="$(awk -F'	' -v t="$title" '$1==t && $2=="cite" {s+=$3} END{print s+0}' "$counts_tmp")"
+    read_n="$(awk -F'	' -v t="$title" '$1==t && $2=="read" {s+=$3} END{print s+0}' "$counts_tmp")"
+    fb_net="$(awk -F'	' -v t="$title" '$1==t { if ($2=="+1") s+=1; else if ($2=="-1") s-=1 } END{print s+0}' "$fb_file")"
+    file="$(mmfs_locate "$title" 2>/dev/null || true)"
+    [ -n "$file" ] && [ -f "$file" ] || continue
+    heat="$(mmfs_get_prop "$file" heat)"
+    [ -n "$heat" ] || heat="seedling"
+    [ "$heat" = evergreen ] && continue
+    bl=0
+    if command -v rg >/dev/null 2>&1; then
+      bl="$(rg -l --fixed-strings -- "[[$title" "$MM_VAULT/brain" 2>/dev/null | grep -cv "^$file\$" || true)"
+    else
+      bl="$(grep -rlF -- "[[$title" "$MM_VAULT/brain" 2>/dev/null | grep -cv "^$file\$" || true)"
+    fi
+    if [ $((cite_n + read_n)) -ge 3 ] || [ "$fb_net" -ge 2 ] || [ "${bl:-0}" -ge 2 ]; then
+      printf 'suggest=promote title=%s cites_30d=%s reads_30d=%s feedback_net=%s backlinks=%s\n' \
+        "$title" "$cite_n" "$read_n" "$fb_net" "${bl:-0}"
+    fi
+  done <<EOF
+$(cut -f1 "$counts_tmp" 2>/dev/null; cut -f1 "$fb_file" 2>/dev/null)
+EOF
+
+  # Title-normalization collisions
+  local norm_tmp f tn
+  norm_tmp="$(mktemp)"
+  if [ -d "$MM_VAULT/brain" ]; then
+    while IFS= read -r f; do
+      [ -f "$f" ] || continue
+      title="$(mmfs_get_prop "$f" title)"
+      [ -n "$title" ] || title="$(basename "$f" .md)"
+      tn="$(mmfs_norm_title "$title")"
+      printf '%s\t%s\n' "$tn" "$title" >> "$norm_tmp"
+    done <<EOF
+$(find "$MM_VAULT/brain" -type f -name '*.md' 2>/dev/null)
+EOF
+    awk -F'	' '
+      { c[$1]++; titles[$1]=titles[$1] (titles[$1]?"|":"") $2 }
+      END {
+        for (n in c) if (c[n] >= 2) {
+          split(titles[n], a, "|")
+          printf "suggest=dedupe title=%s other=%s score=title\n", a[1], a[2]
+        }
+      }
+    ' "$norm_tmp"
+  fi
+  rm -f "$cites_file" "$reads_file" "$fb_file" "$counts_tmp" "$norm_tmp"
+}
+
 mm_obs_rotate() {
   local keep=5000 p tmp lines
   while [ $# -gt 0 ]; do
@@ -83,14 +199,16 @@ mm_obs_days_ago() {
 }
 
 # Extract key=value from a ledger line.
+# Extract key=value from a ledger line. Value may contain spaces; ends at
+# the next " key=" token (key = [a-z][a-z0-9_]*) or EOL.
 mm_obs_field() {
-  local line="$1" key="$2" tok
-  for tok in $line; do
-    case "$tok" in
-      "$key"=*) printf '%s' "${tok#"$key"=}"; return 0 ;;
-    esac
-  done
-  printf ''
+  local line="$1" key="$2" rest
+  case " $line" in
+    *" $key="*) rest="${line#*" $key="}" ;;
+    "$key="*) rest="${line#"$key="}" ;;
+    *) printf ''; return 0 ;;
+  esac
+  printf '%s' "$rest" | sed -E 's/ [a-z][a-z0-9_]*=.*//'
 }
 
 # Return 0 if note has provenance (non-empty sources or body [[wikilink]]).
@@ -111,10 +229,10 @@ mm_obs_health() {
   mmfs_ensure_vault
   local notes_total=0 kind_atom=0 kind_raw=0 kind_scenario=0 kind_persona=0 kind_skill=0 kind_other=0
   local heat_seedling=0 heat_growing=0 heat_evergreen=0
-  local inbox_raw_count=0 legacy_daily_count=0
+  local inbox_raw_count=0 legacy_daily_count=0 superseded_count=0
   local orphan_count=0 orphan_pct=0
   local structured=0 with_prov=0 provenance_pct=-1
-  local f rel k h title dom dom_key sources
+  local f rel k h title dom dom_key st
   local dom_tmp=""
 
   dom_tmp="$(mktemp)"
@@ -127,6 +245,8 @@ mm_obs_health() {
       k="$(mmfs_get_prop "$f" kind)"
       h="$(mmfs_get_prop "$f" heat)"
       dom="$(mmfs_get_prop "$f" domain)"
+      st="$(mmfs_get_prop "$f" status)"
+      [ "$st" = superseded ] && superseded_count=$((superseded_count + 1))
       [ -n "$h" ] || h="seedling"
       case "$k" in
         atom) kind_atom=$((kind_atom + 1)) ;;
@@ -277,6 +397,7 @@ EOF
   printf 'heat_seedling=%s\n' "$heat_seedling"
   printf 'heat_growing=%s\n' "$heat_growing"
   printf 'heat_evergreen=%s\n' "$heat_evergreen"
+  printf 'superseded_count=%s\n' "$superseded_count"
   if [ -s "$dom_tmp" ]; then
     sort "$dom_tmp" | uniq -c | while read -r cnt dname; do
       [ -n "$dname" ] || continue

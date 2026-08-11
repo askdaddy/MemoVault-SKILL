@@ -1,6 +1,6 @@
 ---
 name: memovault
-version: 0.6.1
+version: 0.7.0
 description: "Sink knowledge into a local Obsidian vault with bash. Use when the user wants to capture, save, record, or sink knowledge, notes, learnings, decisions, meeting takeaways, code snippets, or research into their memo vault / second brain / Obsidian knowledge base; or to create, edit, link, search, classify by domain, promote by heat, distill raw notes, recall ranked context, check vault health, or maintain backlinks and skill SOPs. Trigger phrases: 记到笔记 / 记一下 / 笔记里记一下 / 沉淀 / 沉淀一下 / 存到 vault / 存一下 / 存档 / 存到知识库 / 知识库 / 备忘录 / 双链 / 回链 / 按领域归档 / 提升热度 / 日记 / 每日笔记 / remember this / save this / save to vault / save to notes / memo it / note this / capture this / second brain / knowledge base / daily note / backlinks / link this note."
 ---
 
@@ -104,6 +104,8 @@ domain: <area>            # one domain; maps to a folder under brain/<domain>/
 kind: atom                 # optional: raw | atom | scenario | persona | skill
 tags: [tag-a, tag-b]       # freeform; nested tags allowed as parent/child
 heat: seedling             # seedling | growing | evergreen
+status: active             # optional: active | superseded (omit = active)
+supersedes: []             # optional; titles this note replaces
 aliases: []                # alternate names; improves [[wikilink]] resolution
 sources: []                # optional; required when distilled from raw/daily
 created: 2026-07-13
@@ -116,6 +118,8 @@ updated: 2026-07-13
 - **Kind** (optional): layered memory role. Prefer `atom`/`scenario`/`skill`/
   `persona` over `raw` when recalling. Skill SOPs live under `brain/skills/`.
   See `docs/CLASSIFICATION.md`.
+- **Status** (optional): `active` (default) or `superseded`. Default
+  `search`/`recall` skip superseded notes; use `supersede <old> <new>` to mark.
 - **Heat**: maturity/popularity.
   - `seedling` - just captured, unrefined.
   - `growing` - linked to other notes, being developed.
@@ -168,15 +172,21 @@ single shell/filesystem implementation in `scripts/lib/fs.sh`.
 ### Retrieve
 
 ```bash
-"$MM" search "<query>"                 # brain/ full text; excludes kind:raw by default
-"$MM" search "<query>" --limit 20 [--domain d] [--kind k] [--heat h] [--include-raw]
-"$MM" recall "<query>" [--limit 5]     # ranked summary lines (prefer this for recall)
+"$MM" search "<query>"                 # brain/ full text; excludes kind:raw + superseded by default
+"$MM" search "<query>" --limit 20 [--domain d] [--kind k] [--heat h] \
+  [--include-raw] [--include-superseded]
+"$MM" recall "<query>" [--limit 5] [--no-graph] [--include-superseded]
+                                       # ranked + one-hop graph RRF (prefer for recall)
 "$MM" cite "<Title>"                   # record that a note was used in an answer
+"$MM" feedback "<Title>" +1|-1         # explicit reinforce signal (ledger only)
+"$MM" dedupe "<query-or-title>"        # near-duplicate candidates before new/append
+"$MM" suggest                          # promote/dedupe suggestions (no mutations)
 "$MM" tags                             # all tags with counts
 "$MM" tag "<tag>"                      # notes bearing a tag
 "$MM" by-tag "<tag>"
 "$MM" by-heat                          # notes grouped by heat tier
 "$MM" health                           # L0-L2 proxy metrics (alias: stats)
+"$MM" eval [--fixture dir] [--limit 5] # recall hit@k gate on fixture vault
 "$MM" ledger:rotate [--keep 5000]      # trim .memovault/ledger.log
 ```
 
@@ -195,6 +205,7 @@ single shell/filesystem implementation in `scripts/lib/fs.sh`.
 "$MM" move "<Title>" "<new-folder-or-path>"   # filesystem move; basename preserved so links stay valid
 "$MM" rename "<Title>" "<New Title>"          # link-safe: rewrites [[wikilinks]] across the vault
 "$MM" promote "<Title>"                       # seedling->growing->evergreen
+"$MM" supersede "<Old Title>" "<New Title>"   # mark old superseded; keep history
 "$MM" moc "<domain>"                          # (re)generate domain index note
 ```
 
@@ -270,13 +281,18 @@ When the turn produced a reusable how-to that would save future turns:
 ### Health (self-check)
 
 When the user asks about memory health, or inbox/raw is piling up, run `health`
-and suggest distill / promote / linking from the metrics (`hint=...` lines and
-`provenance_pct` / `cite_rate` / `orphan_pct`). Do not silently rewrite the vault.
+and/or `suggest` and act on `hint=` / `suggest=` lines (`provenance_pct` /
+`cite_rate` / `orphan_pct` / `superseded_count`). Confirm before `promote`.
+Do not silently rewrite the vault.
+
+When knowledge is replaced, prefer `supersede "<Old>" "<New>"` over deleting.
+Before creating a note, run `dedupe "<title>"` and prefer `append` on hits.
+
 ## 7. Suggested capture flow
 
 1. `preflight` once.
 2. Decide the domain, optional `kind`, and a concise human readable title.
-3. `search "<keywords>"` and `backlinks` to check for an existing note; prefer to
+3. `dedupe` / `search` / `backlinks` to check for an existing note; prefer to
    `append` to an existing note over creating a duplicate.
 4. `new <domain> "<Title>"` with `--tags` and optional `--kind`, then `append`
    the body, or pass `--body`.

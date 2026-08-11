@@ -32,6 +32,8 @@ domain: engineering
 kind: atom                 # optional; see section 3
 tags: [rust, async]
 heat: seedling
+status: active             # optional: active | superseded; omit = active
+supersedes: []             # optional; titles this note replaces
 aliases: [Short Name]
 sources: []                # optional; fill when distilled from raw/daily
 created: 2026-07-13
@@ -46,6 +48,10 @@ Field rules:
   Omit to keep ordinary domain-note behavior.
 - `tags` - YAML list. Nested tags use `parent/child` (e.g. `lang/rust`).
 - `heat` - exactly one of `seedling`, `growing`, `evergreen`.
+- `status` - optional. `active` (default when omitted) or `superseded`.
+  Default `search`/`recall` exclude superseded notes unless
+  `--include-superseded`. Use `supersede <old> <new>` to mark replacement.
+- `supersedes` - optional YAML list of titles this note replaces.
 - `aliases` - YAML list of alternate names; enables `[[Short Name]]` resolution.
 - `sources` - optional YAML list of note titles or vault-relative paths that
   evidence this note. Required when distilling from raw/daily into a structured

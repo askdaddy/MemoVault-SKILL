@@ -11,7 +11,7 @@ same vault in Obsidian for browsing.
 | | |
 |---|---|
 | Skill name | `memovault` |
-| Version | `0.6.1` (see `VERSION`) |
+| Version | `0.7.0` (see `VERSION`) |
 | Skill source (after install) | `~/.agents/skills/memovault/` |
 | Knowledge vault | `~/.agent-memo-vault/` |
 | Vault override | `AGENT_MEMO_VAULT` |
@@ -32,12 +32,12 @@ are optional.
 ## Features
 
 - **Capture / edit:** `new`, `append`, `prepend`, `read`, `distill`; `daily` (legacy)
-- **Retrieve:** ranked `recall`, filtered `search`, `tags` / `by-tag`, `by-heat`
-- **Observability:** `cite`, `health`/`stats`, `.memovault/ledger.log`
+- **Retrieve:** ranked `recall` (FTS + one-hop graph RRF), filtered `search`,
+  `tags` / `by-tag`, `by-heat`, `dedupe`, `eval`
+- **Observability:** `cite`, `feedback`, `suggest`, `health`/`stats`, ledger
 - **Graph:** `backlinks`, `links`, `orphans`, `unresolved`
-- **Organize:** `move`, `rename` (link-safe: rewrites `[[wikilinks]]` across the
-  vault), `promote`, `moc`
-- **Layered memory:** optional `kind` + `sources` for distill provenance
+- **Organize:** `move`, `rename` (link-safe), `promote`, `supersede`, `moc`
+- **Layered memory:** optional `kind` + `status`/`supersedes` + `sources`
 - **Single shell runtime:** one bash/filesystem implementation; no headless
   toggle, no GUI probe, no `obsidian` binary required
 - **Cross-platform:** macOS and Linux officially; Windows via WSL2 running the

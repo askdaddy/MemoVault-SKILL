@@ -59,12 +59,15 @@ When the turn produced a reusable how-to:
 - One domain per note; domains live under `brain/<domain>/`. Skill SOPs under
   `brain/skills/`.
 - Optional `kind`: `raw` | `atom` | `scenario` | `persona` | `skill`.
-- Heat: `seedling` -> `growing` -> `evergreen`. Suggest `promote` when
-  backlinks justify it; the user confirms.
-- Before creating, `recall`/`search` to avoid duplicates; prefer `append`.
+- Optional `status`: `active` (default) | `superseded`. Prefer
+  `supersede <old> <new>` when knowledge is replaced; default recall skips
+  superseded notes.
+- Before creating, run `dedupe "<title>"` and prefer `append` on hits.
+- Heat: `seedling` -> `growing` -> `evergreen`. Run `suggest` or `health` and
+  confirm before `promote`.
 - When the user asks about memory health, or inbox/raw is piling up, run
-  `__MEMOVAULT_HELPER__ health` and suggest distill / promote / linking from
-  the metrics. Do not silently rewrite the vault.
+  `__MEMOVAULT_HELPER__ health` / `suggest` and act on `hint=` / `suggest=`
+  lines. Do not silently rewrite the vault.
 
 ### 6. Guardrails
 

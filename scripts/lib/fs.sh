@@ -158,6 +158,91 @@ mmfs_distill() {
   printf '%s\n' "${dest#"$MM_VAULT"/}"
 }
 
+# Mark old note superseded by new note. Usage: mmfs_supersede <old-ref> <new-ref>
+mmfs_supersede() {
+  local old_ref="${1:-}" new_ref="${2:-}"
+  [ -n "$old_ref" ] && [ -n "$new_ref" ] || mm_die "usage: supersede <old-title> <new-title>"
+  local old_file new_file old_title new_title today
+  old_file="$(mmfs_locate "$old_ref")"
+  new_file="$(mmfs_locate "$new_ref")"
+  [ -n "$old_file" ] && [ -f "$old_file" ] || mm_die "old note not found: $old_ref"
+  [ -n "$new_file" ] && [ -f "$new_file" ] || mm_die "new note not found: $new_ref"
+  old_title="$(mmfs_get_prop "$old_file" title)"
+  new_title="$(mmfs_get_prop "$new_file" title)"
+  [ -n "$old_title" ] || old_title="$(basename "$old_file" .md)"
+  [ -n "$new_title" ] || new_title="$(basename "$new_file" .md)"
+  today="$(mmfs_today)"
+  mmfs_set_prop "$old_file" status superseded
+  mmfs_set_prop "$old_file" updated "$today"
+  printf '\nSuperseded by [[%s]]\n' "$new_title" >> "$old_file"
+  mmfs_set_prop "$new_file" supersedes "[$old_title]"
+  mmfs_set_prop "$new_file" updated "$today"
+  printf '\nSupersedes [[%s]]\n' "$old_title" >> "$new_file"
+  mm_obs_log "event=supersede" "from=$old_title" "to=$new_title"
+  printf 'superseded=%s by=%s\n' "$old_title" "$new_title"
+}
+
+# Normalize title for dedupe (lowercase, trim).
+mmfs_norm_title() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'
+}
+
+# Suggest near-duplicate notes. Usage: mmfs_dedupe <query-or-title> [--limit N]
+mmfs_dedupe() {
+  local q="${1:-}"; shift 2>/dev/null || true
+  local limit=5
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --limit) limit="${2:-5}"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  [ -n "$q" ] || mm_die "usage: dedupe <query-or-title> [--limit N]"
+  mmfs_ensure_vault
+  [ -d "$MM_VAULT/brain" ] || return 0
+  local qn kept=0 f title tn rel seen="" line fpath abs
+  qn="$(mmfs_norm_title "$q")"
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    title="$(mmfs_get_prop "$f" title)"
+    [ -n "$title" ] || title="$(basename "$f" .md)"
+    tn="$(mmfs_norm_title "$title")"
+    if [ "$tn" = "$qn" ] || { [ -n "$qn" ] && printf '%s' "$tn" | grep -Fq -- "$qn"; }; then
+      rel="${f#"$MM_VAULT"/}"
+      case "$seen" in *"|$title|"*) continue ;; esac
+      seen="${seen}|$title|"
+      printf 'path=%s title=%s reason=title_match\n' "$rel" "$title"
+      kept=$((kept + 1))
+      [ "$kept" -ge "$limit" ] && return 0
+    fi
+  done <<EOF
+$(find "$MM_VAULT/brain" -type f -name '*.md' 2>/dev/null)
+EOF
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "$line" ] || continue
+    fpath="$(printf '%s\n' "$line" | awk -F: '
+      {
+        p=$1
+        for (i=2; i<=NF; i++) {
+          if (p ~ /\.md$/) { print p; exit }
+          p=p ":" $i
+        }
+        print $1
+      }')"
+    abs="$MM_VAULT/$fpath"
+    [ -f "$abs" ] || continue
+    title="$(mmfs_get_prop "$abs" title)"
+    [ -n "$title" ] || title="$(basename "$fpath" .md)"
+    case "$seen" in *"|$title|"*) continue ;; esac
+    seen="${seen}|$title|"
+    printf 'path=%s title=%s reason=search_hit\n' "$fpath" "$title"
+    kept=$((kept + 1))
+    [ "$kept" -ge "$limit" ] && break
+  done <<EOF
+$(mmfs_search "$q" --limit "$limit" 2>/dev/null || true)
+EOF
+}
+
 mmfs_append() {
   local ref="$1" content="$2"
   local file; file="$(mmfs_locate "$ref")"
@@ -250,13 +335,15 @@ mmfs_set_prop() {
   awk -v n="$name" -v v="$value" '
     BEGIN { state = 0; done = 0 }
     /^---[[:space:]]*$/ {
-      print
-      if (state == 0) { state = 1; next }
+      if (state == 0) { print; state = 1; next }
       if (state == 1) {
         if (!done) print n ": " v
+        print
         state = 2
         next
       }
+      print
+      next
     }
     state == 1 && $0 ~ "^"n":" { print n ": " v; done = 1; next }
     { print }
@@ -264,9 +351,11 @@ mmfs_set_prop() {
   mv "$tmp" "$file"
 }
 
-# Return 0 if note file passes search filters. Args: file domain kind heat include_raw
+# Return 0 if note file passes search filters.
+# Args: file domain kind heat include_raw include_superseded
 mmfs_search_file_ok() {
   local file="$1" want_domain="$2" want_kind="$3" want_heat="$4" include_raw="$5"
+  local include_superseded="${6:-0}"
   local rel prop
   rel="${file#"$MM_VAULT"/}"
   case "$rel" in
@@ -275,6 +364,10 @@ mmfs_search_file_ok() {
   if [ "$include_raw" != 1 ]; then
     prop="$(mmfs_get_prop "$file" kind)"
     [ "$prop" = raw ] && return 1
+  fi
+  if [ "$include_superseded" != 1 ]; then
+    prop="$(mmfs_get_prop "$file" status)"
+    [ "$prop" = superseded ] && return 1
   fi
   if [ -n "$want_domain" ]; then
     prop="$(mmfs_get_prop "$file" domain)"
@@ -292,11 +385,11 @@ mmfs_search_file_ok() {
   return 0
 }
 
-# Full-text search under brain/. Default excludes kind:raw. daily/ is outside
-# the search root. Flags: --limit N --domain D --kind K --heat H --include-raw
+# Full-text search under brain/. Default excludes kind:raw and status:superseded.
+# Flags: --limit N --domain D --kind K --heat H --include-raw --include-superseded
 mmfs_search() {
   local q="${1:-}"; shift 2>/dev/null || true
-  local limit="" domain="" kind="" heat="" include_raw=0
+  local limit="" domain="" kind="" heat="" include_raw=0 include_superseded=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --limit) limit="${2:-}"; shift 2 ;;
@@ -304,10 +397,11 @@ mmfs_search() {
       --kind) kind="${2:-}"; shift 2 ;;
       --heat) heat="${2:-}"; shift 2 ;;
       --include-raw) include_raw=1; shift ;;
+      --include-superseded) include_superseded=1; shift ;;
       *) shift ;;
     esac
   done
-  [ -n "$q" ] || mm_die "usage: search <query> [--limit N] [--domain D] [--kind K] [--heat H] [--include-raw]"
+  [ -n "$q" ] || mm_die "usage: search <query> [--limit N] [--domain D] [--kind K] [--heat H] [--include-raw] [--include-superseded]"
   mmfs_ensure_vault
   [ -d "$MM_VAULT/brain" ] || return 0
 
@@ -319,20 +413,13 @@ mmfs_search() {
   fi
   [ -n "$raw" ] || return 0
 
-  # Cache ok/fail per absolute file path to avoid re-reading frontmatter.
-  # Bash 3.2: encode as newline list "path<TAB>0|1"
   local cache="" cache_hit ok
   while IFS= read -r line || [ -n "$line" ]; do
     [ -n "$line" ] || continue
     case "$line" in
-      "$MM_VAULT"/*)
-        rel="${line#"$MM_VAULT"/}"
-        ;;
-      *)
-        rel="$line"
-        ;;
+      "$MM_VAULT"/*) rel="${line#"$MM_VAULT"/}" ;;
+      *) rel="$line" ;;
     esac
-    # rel is path:lineno:text — split on first two colons after .md
     fpath="$(printf '%s\n' "$rel" | awk -F: '
       {
         p=$1
@@ -349,7 +436,7 @@ mmfs_search() {
     if [ -n "$cache_hit" ]; then
       ok="$cache_hit"
     else
-      if mmfs_search_file_ok "$abs" "$domain" "$kind" "$heat" "$include_raw"; then
+      if mmfs_search_file_ok "$abs" "$domain" "$kind" "$heat" "$include_raw" "$include_superseded"; then
         ok=1
       else
         ok=0
@@ -386,109 +473,224 @@ mmfs_kind_score() {
   esac
 }
 
-# Ranked recall summary. Same default filters as search (no raw). Default limit 5.
+# Print wikilink targets from a note body (one title per line; strip aliases).
+mmfs_wikilink_targets() {
+  local file="$1"
+  [ -f "$file" ] || return 0
+  grep -oE '\[\[[^]]+\]\]' "$file" 2>/dev/null \
+    | sed -E 's/^\[\[//; s/\]\]$//; s/\|.*//' \
+    | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' \
+    | grep -v '^$' || true
+}
+
+# Resolve title to vault-relative path under brain/, or empty.
+mmfs_title_to_relpath() {
+  local title="$1" hit
+  hit="$(mmfs_locate "$title" 2>/dev/null || true)"
+  if [ -n "$hit" ] && [ -f "$hit" ]; then
+    printf '%s\n' "${hit#"$MM_VAULT"/}"
+  fi
+}
+
+# Ranked recall with optional one-hop graph expansion + simplified RRF.
+# Flags: --limit N --no-graph --include-superseded
 # Lines: path=... title=... kind=... heat=... snippet=...
 mmfs_recall() {
   local q="${1:-}"; shift 2>/dev/null || true
-  local limit=5
+  local limit=5 use_graph=1 include_superseded=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --limit) limit="${2:-5}"; shift 2 ;;
+      --no-graph) use_graph=0; shift ;;
+      --include-superseded) include_superseded=1; shift ;;
       *) shift ;;
     esac
   done
-  [ -n "$q" ] || mm_die "usage: recall <query> [--limit N]"
+  [ -n "$q" ] || mm_die "usage: recall <query> [--limit N] [--no-graph] [--include-superseded]"
   mmfs_ensure_vault
   [ -d "$MM_VAULT/brain" ] || return 0
 
   local raw="" line abs rel fpath text snippet
   local title kind heat updated hs ks
-  local rows="" seen=""
-  local q_tok
+  local q_tok rank_a=0
+  local tmpa tmpb tmpm
   q_tok="$(printf '%s' "$q" | tr ' ' '_')"
+  tmpa="$(mktemp)"
+  tmpb="$(mktemp)"
+  tmpm="$(mktemp)"
 
   if command -v rg >/dev/null 2>&1; then
     raw="$(rg --no-heading -n -- "$q" "$MM_VAULT/brain" 2>/dev/null || true)"
   else
     raw="$(grep -rn -- "$q" "$MM_VAULT/brain" 2>/dev/null || true)"
   fi
-  if [ -z "$raw" ]; then
-    mm_obs_log "event=recall" "q=$q_tok" "hits=0" "top="
-    return 0
-  fi
 
-  while IFS= read -r line || [ -n "$line" ]; do
-    [ -n "$line" ] || continue
-    case "$line" in
-      "$MM_VAULT"/*) rel="${line#"$MM_VAULT"/}" ;;
-      *) rel="$line" ;;
-    esac
-    fpath="$(printf '%s\n' "$rel" | awk -F: '
-      {
-        p=$1
-        for (i=2; i<=NF; i++) {
-          if (p ~ /\.md$/) { print p; exit }
-          p=p ":" $i
-        }
-        print $1
-      }')"
-    abs="$MM_VAULT/$fpath"
-    [ -f "$abs" ] || continue
-    case "$seen" in
-      *"|$fpath|"*) continue ;;
-    esac
-    mmfs_search_file_ok "$abs" "" "" "" 0 || continue
-    seen="${seen}|$fpath|"
-
-    text="$(printf '%s\n' "$rel" | awk -F: '
-      {
-        p=$1
-        idx=2
-        for (i=2; i<=NF; i++) {
-          if (p ~ /\.md$/) { idx=i+1; break }
-          p=p ":" $i
-          idx=i+1
-        }
-        out=""
-        for (j=idx; j<=NF; j++) {
-          if (out != "") out=out ":"
-          out=out $j
-        }
-        print out
-      }')"
-    snippet="$(printf '%s' "$text" | tr '\n\r\t' ' ' | sed -E 's/  +/ /g; s/^ //; s/ $//' | cut -c1-120)"
-
-    title="$(mmfs_get_prop "$abs" title)"
-    [ -n "$title" ] || title="$(basename "$fpath" .md)"
-    kind="$(mmfs_get_prop "$abs" kind)"
-    [ -n "$kind" ] || kind="-"
-    heat="$(mmfs_get_prop "$abs" heat)"
-    [ -n "$heat" ] || heat="seedling"
-    updated="$(mmfs_get_prop "$abs" updated)"
-    [ -n "$updated" ] || updated="1970-01-01"
-    hs="$(mmfs_heat_score "$heat")"
-    ks="$(mmfs_kind_score "$kind")"
-    rows="${rows}${hs}	${ks}	${updated}	${fpath}	${title}	${kind}	${heat}	${snippet}
-"
-  done <<EOF
+  local seen=""
+  if [ -n "$raw" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      [ -n "$line" ] || continue
+      case "$line" in
+        "$MM_VAULT"/*) rel="${line#"$MM_VAULT"/}" ;;
+        *) rel="$line" ;;
+      esac
+      fpath="$(printf '%s\n' "$rel" | awk -F: '
+        {
+          p=$1
+          for (i=2; i<=NF; i++) {
+            if (p ~ /\.md$/) { print p; exit }
+            p=p ":" $i
+          }
+          print $1
+        }')"
+      abs="$MM_VAULT/$fpath"
+      [ -f "$abs" ] || continue
+      case "$seen" in *"|$fpath|"*) continue ;; esac
+      mmfs_search_file_ok "$abs" "" "" "" 0 "$include_superseded" || continue
+      seen="${seen}|$fpath|"
+      text="$(printf '%s\n' "$rel" | awk -F: '
+        {
+          p=$1; idx=2
+          for (i=2; i<=NF; i++) {
+            if (p ~ /\.md$/) { idx=i+1; break }
+            p=p ":" $i; idx=i+1
+          }
+          out=""
+          for (j=idx; j<=NF; j++) { if (out!="") out=out ":"; out=out $j }
+          print out
+        }')"
+      snippet="$(printf '%s' "$text" | tr '\n\r\t' ' ' | sed -E 's/  +/ /g; s/^ //; s/ $//' | cut -c1-120)"
+      title="$(mmfs_get_prop "$abs" title)"
+      [ -n "$title" ] || title="$(basename "$fpath" .md)"
+      kind="$(mmfs_get_prop "$abs" kind)"
+      [ -n "$kind" ] || kind="-"
+      heat="$(mmfs_get_prop "$abs" heat)"
+      [ -n "$heat" ] || heat="seedling"
+      updated="$(mmfs_get_prop "$abs" updated)"
+      [ -n "$updated" ] || updated="1970-01-01"
+      hs="$(mmfs_heat_score "$heat")"
+      ks="$(mmfs_kind_score "$kind")"
+      rank_a=$((rank_a + 1))
+      # path rank_a hs ks updated title kind heat snippet
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$fpath" "$rank_a" "$hs" "$ks" "$updated" "$title" "$kind" "$heat" "$snippet" >> "$tmpa"
+    done <<EOF
 $raw
 EOF
+  fi
 
-  if [ -z "$rows" ]; then
+  if [ ! -s "$tmpa" ]; then
     mm_obs_log "event=recall" "q=$q_tok" "hits=0" "top="
+    rm -f "$tmpa" "$tmpb" "$tmpm"
     return 0
   fi
 
-  local ranked titles hits=0 top_tok
-  ranked="$(printf '%s' "$rows" | sort -t'	' -k1,1nr -k2,2nr -k3,3r | head -n "$limit")"
+  # Graph expansion: one-hop neighbors of top min(5,|A|) FTS hits
+  if [ "$use_graph" = 1 ]; then
+    local topn=0 max_seed=5 nbr_count=0 max_nbr=50
+    local seed_path seed_title nt nrel nabs nfile
+    while IFS='	' read -r seed_path _r _hs _ks _u seed_title _k _h _s; do
+      [ -n "$seed_path" ] || continue
+      topn=$((topn + 1))
+      [ "$topn" -gt "$max_seed" ] && break
+      nfile="$MM_VAULT/$seed_path"
+      # outgoing
+      while IFS= read -r nt; do
+        [ -n "$nt" ] || continue
+        nrel="$(mmfs_title_to_relpath "$nt")"
+        [ -n "$nrel" ] || continue
+        nabs="$MM_VAULT/$nrel"
+        mmfs_search_file_ok "$nabs" "" "" "" 0 "$include_superseded" || continue
+        case "$seen" in *"|$nrel|"*) continue ;; esac
+        seen="${seen}|$nrel|"
+        nbr_count=$((nbr_count + 1))
+        [ "$nbr_count" -gt "$max_nbr" ] && break 2
+        title="$(mmfs_get_prop "$nabs" title)"
+        [ -n "$title" ] || title="$(basename "$nrel" .md)"
+        kind="$(mmfs_get_prop "$nabs" kind)"
+        [ -n "$kind" ] || kind="-"
+        heat="$(mmfs_get_prop "$nabs" heat)"
+        [ -n "$heat" ] || heat="seedling"
+        updated="$(mmfs_get_prop "$nabs" updated)"
+        [ -n "$updated" ] || updated="1970-01-01"
+        hs="$(mmfs_heat_score "$heat")"
+        ks="$(mmfs_kind_score "$kind")"
+        snippet="graph-neighbor of $seed_title"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+          "$nrel" "$nbr_count" "$hs" "$ks" "$updated" "$title" "$kind" "$heat" "$snippet" >> "$tmpb"
+      done <<EOF
+$(mmfs_wikilink_targets "$nfile")
+EOF
+      # incoming (backlinks)
+      while IFS= read -r nrel; do
+        [ -n "$nrel" ] || continue
+        case "$nrel" in
+          /*) nabs="$nrel"; nrel="${nabs#"$MM_VAULT"/}" ;;
+          *) nabs="$MM_VAULT/$nrel" ;;
+        esac
+        [ -f "$nabs" ] || continue
+        mmfs_search_file_ok "$nabs" "" "" "" 0 "$include_superseded" || continue
+        case "$seen" in *"|$nrel|"*) continue ;; esac
+        seen="${seen}|$nrel|"
+        nbr_count=$((nbr_count + 1))
+        [ "$nbr_count" -gt "$max_nbr" ] && break 2
+        title="$(mmfs_get_prop "$nabs" title)"
+        [ -n "$title" ] || title="$(basename "$nrel" .md)"
+        kind="$(mmfs_get_prop "$nabs" kind)"
+        [ -n "$kind" ] || kind="-"
+        heat="$(mmfs_get_prop "$nabs" heat)"
+        [ -n "$heat" ] || heat="seedling"
+        updated="$(mmfs_get_prop "$nabs" updated)"
+        [ -n "$updated" ] || updated="1970-01-01"
+        hs="$(mmfs_heat_score "$heat")"
+        ks="$(mmfs_kind_score "$kind")"
+        snippet="graph-backlink to $seed_title"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+          "$nrel" "$nbr_count" "$hs" "$ks" "$updated" "$title" "$kind" "$heat" "$snippet" >> "$tmpb"
+      done <<EOF
+$(mmfs_backlinks "$seed_title" 2>/dev/null || true)
+EOF
+    done < "$tmpa"
+  fi
+
+  # RRF merge: score = 1/(60+ra) + 1/(60+rb); missing rank=1000
+  awk -F'	' -v k=60 '
+    FNR==NR {
+      # list A: path ra hs ks updated title kind heat snippet
+      path=$1; ra=$2
+      meta[path]=$3 "\t" $4 "\t" $5 "\t" $6 "\t" $7 "\t" $8 "\t" $9
+      rankA[path]=ra
+      next
+    }
+    {
+      path=$1; rb=$2
+      if (!(path in meta)) {
+        meta[path]=$3 "\t" $4 "\t" $5 "\t" $6 "\t" $7 "\t" $8 "\t" $9
+      }
+      rankB[path]=rb
+    }
+    END {
+      for (p in meta) {
+        ra = (p in rankA) ? rankA[p] : 1000
+        rb = (p in rankB) ? rankB[p] : 1000
+        score = 1.0/(k+ra) + 1.0/(k+rb)
+        split(meta[p], m, "\t")
+        # score hs ks updated path title kind heat snippet
+        printf "%.8f\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", score, m[1], m[2], m[3], p, m[4], m[5], m[6], m[7]
+      }
+    }
+  ' "$tmpa" "$tmpb" 2>/dev/null | sort -t'	' -k1,1nr -k2,2nr -k3,3nr -k4,4r > "$tmpm"
+
+  local ranked hits=0 titles top_tok
+  ranked="$(head -n "$limit" "$tmpm")"
   hits="$(printf '%s\n' "$ranked" | grep -c . || true)"
-  titles="$(printf '%s\n' "$ranked" | awk -F'	' '{ printf "%s%s", (NR>1?",":""), $5 }')"
+  titles="$(printf '%s\n' "$ranked" | awk -F'	' '{ printf "%s%s", (NR>1?",":""), $6 }')"
   top_tok="$(printf '%s' "$titles" | tr ' ' '_')"
   mm_obs_log "event=recall" "q=$q_tok" "hits=$hits" "top=$top_tok"
-  printf '%s\n' "$ranked" | while IFS='	' read -r _hs _ks _upd fpath title kind heat snippet; do
+  printf '%s\n' "$ranked" | while IFS='	' read -r _sc _hs _ks _upd fpath title kind heat snippet; do
     [ -n "$fpath" ] || continue
     printf 'path=%s title=%s kind=%s heat=%s snippet=%s\n' "$fpath" "$title" "$kind" "$heat" "$snippet"
   done
+  rm -f "$tmpa" "$tmpb" "$tmpm"
 }
 
 # All tags with counts (expects inline "tags: [a, b]" frontmatter).

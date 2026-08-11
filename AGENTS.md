@@ -79,9 +79,10 @@ directly under `$AGENT_MEMO_VAULT` via `scripts/lib/fs.sh`. `rename` rewrites
 accepted for backward compatibility but ignored (the runtime is always shell).
 
 Full surface: `preflight`, `new`, `append`, `prepend`, `read`, `distill`,
-`daily`, `search`, `recall`, `cite`, `tags`, `by-tag`, `backlinks`, `links`,
-`orphans`, `unresolved`, `move`, `rename`, `promote`, `moc`, `by-heat`,
-`health`, `stats`, `ledger:rotate`.
+`daily`, `search`, `recall`, `cite`, `feedback`, `dedupe`, `suggest`, `tags`,
+`by-tag`, `backlinks`, `links`, `orphans`, `unresolved`, `move`, `rename`,
+`promote`, `supersede`, `moc`, `by-heat`, `health`, `stats`, `eval`,
+`ledger:rotate`.
 
 `preflight` prints a single machine readable line:
 

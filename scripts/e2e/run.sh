@@ -56,7 +56,7 @@ SYNTAX_FAILS=$E2E_FAIL
 
 run_suites() {
   local s
-  for s in 01-preflight 02-capture 03-retrieve 04-graph 05-organize 06-obs 07-acceptance; do
+  for s in 01-preflight 02-capture 03-retrieve 04-graph 05-organize 06-obs 07-acceptance 08-forward; do
     if [ -f "$HERE/suites/${s}.sh" ]; then
       # shellcheck disable=SC1090
       E2E_PHASE=shell . "$HERE/suites/${s}.sh"

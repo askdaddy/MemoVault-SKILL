@@ -100,6 +100,8 @@ MM_VAULT="${AGENT_MEMO_VAULT:-$HOME/.agent-memo-vault}"
 . "$MM_ROOT/lib/classify.sh"
 # shellcheck source=lib/obs.sh
 . "$MM_ROOT/lib/obs.sh"
+# shellcheck source=lib/eval.sh
+. "$MM_ROOT/lib/eval.sh"
 
 # MM_FORCE_FS is deprecated. The runtime is always shell/fs now; if a caller
 # still exports it (e.g. an old env.sh or e2e harness), warn once and ignore.
@@ -172,19 +174,25 @@ Capture / edit:
   prepend <note> "<markdown>"   (inserted after frontmatter)
   read <note>
   distill <raw> <domain> <title> [--kind atom|scenario]
+  supersede <old> <new>         mark old superseded by new
   daily                         (legacy) show today's daily note
   daily:append "<line>"         (legacy) append to today's daily note
 
 Retrieve:
-  search <query> [--limit N] [--domain D] [--kind K] [--heat H] [--include-raw]
-                                full text in brain/; excludes kind:raw by default
-  recall <query> [--limit N]    ranked recall summary (default limit 5)
+  search <query> [--limit N] [--domain D] [--kind K] [--heat H]
+                 [--include-raw] [--include-superseded]
+  recall <query> [--limit N] [--no-graph] [--include-superseded]
   cite <title>                  record that a note was used in an answer
+  feedback <title> +1|-1        explicit reinforce signal (ledger only)
+  dedupe <query-or-title>       near-duplicate candidates
+  suggest                       promote/dedupe suggestions (no mutations)
   tags                          all tags with counts
   tag <name> | by-tag <name>    notes bearing a tag
   by-heat                       notes grouped by heat tier
   health | stats                vault + ledger metrics (L0-L2 proxies)
   ledger:rotate [--keep N]      trim ledger.log (default keep 5000 lines)
+  eval [--fixture dir] [--limit N] [--no-graph]
+                                recall hit@k gate on fixture cases
 
 Graph:
   backlinks <note>              notes linking to this note
@@ -217,13 +225,18 @@ main() {
     prepend)      mmfs_prepend "${1:-}" "${2:-}" ;;
     read)         mmfs_read "${1:-}" ;;
     distill)      mmfs_distill "$@" ;;
+    supersede)    mmfs_supersede "${1:-}" "${2:-}" ;;
     daily)        mmfs_daily ;;
     daily:append) mmfs_daily_append "${1:-}" ;;
     search)       mmfs_search "$@" ;;
     recall)       mmfs_recall "$@" ;;
     cite)         mm_obs_cite "${1:-}" ;;
+    feedback)     mm_obs_feedback "${1:-}" "${2:-}" ;;
+    dedupe)       mmfs_dedupe "$@" ;;
+    suggest)      mm_obs_suggest ;;
     health|stats) mm_obs_health ;;
     ledger:rotate) mm_obs_rotate "$@" ;;
+    eval)         mm_eval_run "$@" ;;
     tags)         mmfs_tags ;;
     tag)          mmfs_tag "${1:-}" ;;
     by-tag)       mmfs_tag "${1:-}" ;;

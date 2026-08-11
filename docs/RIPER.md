@@ -935,3 +935,31 @@ mode so distill provenance closes the loop.
 ### Review
 - `./scripts/e2e/run.sh`：pass=69 fail=0
 
+## 15. Entry: 前瞻三主题 0.7.0（2026-08-11）
+
+### Research
+- vault 笔记「Agent memory 前瞻调研 2026-08」；对照 0.6.x 缺口：时效、强化/
+  去重、第二路检索与可重复 eval。
+- 规格：`docs/superpowers/specs/2026-08-11-forward-three-themes-design.md`
+  （已批准）。
+- 计划：`docs/superpowers/plans/2026-08-11-forward-three-themes.md`。
+
+### Innovate
+- 选定：`status`/`supersede`；ledger `feedback` + `suggest`/`dedupe`；recall
+  一跳 + RRF；fixture `eval`。明确不做向量 / Neo4j / 自动 promote。
+
+### Plan (approved via user「批准」)
+- P0–P2 同版本 `0.7.0`：过滤与 supersede、reinforce+dedupe、RRF+eval、文档。
+
+### Execute
+- `scripts/lib/fs.sh`：`mmfs_set_prop` 新字段写入 frontmatter 内；status 过滤；
+  `supersede` / `dedupe`；recall 图扩展 + RRF。
+- `scripts/lib/obs.sh`：`feedback` / `suggest`；ledger 字段解析支持含空格
+  title；`superseded_count`。
+- `scripts/lib/eval.sh` + `scripts/e2e/fixtures/eval-memory/`；suite `08-forward`。
+- 协议 / CLASSIFICATION / SKILL / README* / AGENTS / VERSION `0.7.0`。
+
+### Review
+- `./scripts/e2e/run.sh`：pass=81 fail=0
+- `bash -n` 相关脚本通过
+

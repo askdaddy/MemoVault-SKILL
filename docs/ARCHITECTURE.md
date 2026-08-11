@@ -88,7 +88,8 @@ upgrade)` line to stderr.
 ## 5. Operation mapping
 
 Every subcommand is implemented in `scripts/lib/fs.sh` (with `lib/rewrite.sh`
-for `rename` and `lib/obs.sh` for ledger/health). There is no second column
+for `rename`, `lib/obs.sh` for ledger/health/suggest, and `lib/eval.sh` for
+`eval`). There is no second column
 anymore; the table is single-track.
 
 | Subcommand | Implementation |
@@ -99,9 +100,12 @@ anymore; the table is single-track.
 | `read` | `cat` |
 | `distill` | `new` atom/scenario + `sources` + raw pointer |
 | `daily` / `daily:append` | legacy `daily/YYYY-MM-DD.md` (not agent L0) |
-| `search` | `rg`/`grep` under `brain/`; filters; excludes `kind:raw` by default |
-| `recall` | filtered + heat/kind ranked summary lines |
-| `cite` | append `event=cite` to `.memovault/ledger.log` |
+| `search` | `rg`/`grep` under `brain/`; filters; excludes raw + superseded by default |
+| `recall` | FTS candidates + optional one-hop neighbors; RRF + heat/kind ranking |
+| `cite` / `feedback` | append ledger events |
+| `dedupe` | title-normalization near-duplicate candidates |
+| `suggest` | promote/dedupe suggestions from ledger + light vault scan |
+| `eval` | fixture vault recall hit@k gate |
 | `health` / `stats` | L0 vault scan + L1/L2 ledger proxies |
 | `ledger:rotate` | trim ledger.log |
 | `tags` / `tag` / `by-tag` | scan `^tags:` lines |
@@ -112,12 +116,13 @@ anymore; the table is single-track.
 | `move` | `mv` only; basename preserved so wikilinks stay valid |
 | `rename` | `mv` + `lib/rewrite.sh` rewrites `[[wikilinks]]` across the vault and updates the target file's `title:` |
 | `promote` | awk edit frontmatter `heat` and `updated` |
+| `supersede` | mark old `status: superseded`; update new `supersedes` + pointers |
 | `moc` | list domain files, group by heat, write index |
 
 ## 6. Data flow for a capture
 
 1. Agent runs `preflight`.
-2. Agent runs `recall`/`search`/`backlinks` to dedupe.
+2. Agent runs `dedupe`/`recall`/`search`/`backlinks` to avoid duplicates.
 3. Agent runs `new <domain> "<Title>"` -> helper writes
    `$VAULT/brain/<domain>/<Title>.md` with frontmatter (`heat: seedling`).
 4. Agent runs `append "<Title>" "<body>"` with `[[wikilinks]]`.

@@ -10,7 +10,7 @@ markdown 读写 vault 目录下同一批文件。人可以另外用 Obsidian 桌
 | | |
 |---|---|
 | Skill 名 | `memovault` |
-| 版本 | `0.6.1`（见 `VERSION`） |
+| 版本 | `0.7.0`（见 `VERSION`） |
 | 安装后 skill 源 | `~/.agents/skills/memovault/` |
 | 知识库 vault | `~/.agent-memo-vault/` |
 | Vault 覆盖变量 | `AGENT_MEMO_VAULT` |
@@ -30,11 +30,11 @@ L0–L2 代理指标用于自评。
 ## 能力
 
 - **写入 / 编辑：** `new`、`append`、`prepend`、`read`、`distill`；`daily`（legacy）
-- **检索：** `recall`（加权摘要）、`search`（可按 domain/kind/heat 过滤）、`tags` / `by-tag`、`by-heat`
-- **可观测：** `cite`、`health`/`stats`、`.memovault/ledger.log`
+- **检索：** `recall`（FTS + 一跳图 RRF）、`search`（可过滤）、`dedupe`、`eval`
+- **可观测：** `cite`、`feedback`、`suggest`、`health`/`stats`、ledger
 - **图谱：** `backlinks`、`links`、`orphans`、`unresolved`
-- **整理：** `move`、`rename`（链接安全：跨 vault 改写 `[[wikilinks]]`）、`promote`、`moc`
-- **分层记忆：** 可选 `kind` + `sources`（蒸馏溯源）
+- **整理：** `move`、`rename`（链接安全）、`promote`、`supersede`、`moc`
+- **分层记忆：** 可选 `kind` + `status`/`supersedes` + `sources`
 - **单一 shell 运行时：** 一套 bash/文件系统实现；无 headless 开关、无 GUI 探测、不依赖 `obsidian` 二进制
 - **跨平台：** macOS、Linux 官方支持；Windows 仅通过 WSL2 跑同一套 bash 脚本（不维护原生 PowerShell 业务逻辑）
 - **多 Agent 安装：** Claude、Cursor、Codex、Gemini、Cline、Copilot 等

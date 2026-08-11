@@ -888,3 +888,28 @@ mode so distill provenance closes the loop.
 - 二次远程：`remote: updating` + re-exec 幂等。
 - 命名合同保持；无 emoji；无独立 bootstrap.sh。
 
+## 13. Entry: Memory Loop 0.6.0（2026-08-10）
+
+### Research
+- 产品评审：通用性、召回效率、可观测 L0–L2、daily/templates 定位、进化飞轮。
+- 规格：`docs/superpowers/specs/2026-08-10-memory-loop-design.md`（已批准）。
+- 计划：`docs/superpowers/plans/2026-08-10-memory-loop.md`。
+
+### Innovate
+- 选定 Loop + 代理型 L2；daily 退出主叙事；templates 降级可选。
+- ledger 用 `.memovault/ledger.log` + `key=value` 行（bash 3.2 友好）。
+
+### Plan (approved)
+- P0–P2 同版本 `0.6.0`：search 过滤、`recall`、协议、ledger/cite/health、distill、文档。
+
+### Execute
+- `scripts/lib/fs.sh`：search 过滤、`recall`、`distill`、写路径埋点。
+- `scripts/lib/obs.sh`：ledger、cite、health/stats、rotate。
+- `scripts/memovault.sh`：派发新子命令；usage。
+- `install/adapters/_protocol.md` 缩短；`install.sh --verify` 不再要求 templates。
+- e2e `06-obs.sh`；文档 / VERSION / SKILL / AGENTS / RIPER。
+
+### Review
+- `./scripts/e2e/run.sh`：pass=55 fail=0。
+- `bash -n` 相关脚本通过。
+

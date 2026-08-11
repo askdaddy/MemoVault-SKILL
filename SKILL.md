@@ -1,7 +1,7 @@
 ---
 name: memovault
-version: 0.5.1
-description: "Sink knowledge into a local Obsidian vault with bash. Use when the user wants to capture, save, record, or sink knowledge, notes, learnings, decisions, meeting takeaways, code snippets, or research into their memo vault / second brain / Obsidian knowledge base; or to create, edit, link, search, classify by domain, promote by heat, distill raw notes, or maintain backlinks, daily notes, and skill SOPs. Trigger phrases: 记到笔记 / 记一下 / 笔记里记一下 / 沉淀 / 沉淀一下 / 存到 vault / 存一下 / 存档 / 存到知识库 / 知识库 / 备忘录 / 双链 / 回链 / 按领域归档 / 提升热度 / 日记 / 每日笔记 / remember this / save this / save to vault / save to notes / memo it / note this / capture this / second brain / knowledge base / daily note / backlinks / link this note."
+version: 0.6.0
+description: "Sink knowledge into a local Obsidian vault with bash. Use when the user wants to capture, save, record, or sink knowledge, notes, learnings, decisions, meeting takeaways, code snippets, or research into their memo vault / second brain / Obsidian knowledge base; or to create, edit, link, search, classify by domain, promote by heat, distill raw notes, recall ranked context, check vault health, or maintain backlinks and skill SOPs. Trigger phrases: 记到笔记 / 记一下 / 笔记里记一下 / 沉淀 / 沉淀一下 / 存到 vault / 存一下 / 存档 / 存到知识库 / 知识库 / 备忘录 / 双链 / 回链 / 按领域归档 / 提升热度 / 日记 / 每日笔记 / remember this / save this / save to vault / save to notes / memo it / note this / capture this / second brain / knowledge base / daily note / backlinks / link this note."
 ---
 
 # MemoVault
@@ -152,12 +152,15 @@ single shell/filesystem implementation in `scripts/lib/fs.sh`.
 # New note in a domain (creates frontmatter, places under brain/<domain>/)
 "$MM" new <domain> "<Title>" [--tags a,b] [--kind atom] [--body "initial text"]
 
+# Distill raw evidence into atom|scenario (sets sources + wikilink + raw pointer)
+"$MM" distill "<Raw Title>" <domain> "<Title>" [--kind atom]
+
 # Append / prepend / read an existing note (by title or path)
 "$MM" append "<Title>" "<markdown to add>"
 "$MM" prepend "<Title>" "<markdown to add>"   # inserted after frontmatter
 "$MM" read "<Title>"
 
-# Daily note
+# Daily note (legacy / human Obsidian habit; not the agent L0 path)
 "$MM" daily                      # show today's daily note path/contents
 "$MM" daily:append "- [ ] task"  # append to today's daily note
 ```
@@ -165,12 +168,16 @@ single shell/filesystem implementation in `scripts/lib/fs.sh`.
 ### Retrieve
 
 ```bash
-"$MM" search "<query>"                 # full text; grep style path:line: text
-"$MM" search "<query>" --limit 20
+"$MM" search "<query>"                 # brain/ full text; excludes kind:raw by default
+"$MM" search "<query>" --limit 20 [--domain d] [--kind k] [--heat h] [--include-raw]
+"$MM" recall "<query>" [--limit 5]     # ranked summary lines (prefer this for recall)
+"$MM" cite "<Title>"                   # record that a note was used in an answer
 "$MM" tags                             # all tags with counts
 "$MM" tag "<tag>"                      # notes bearing a tag
 "$MM" by-tag "<tag>"
 "$MM" by-heat                          # notes grouped by heat tier
+"$MM" health                           # L0-L2 proxy metrics (alias: stats)
+"$MM" ledger:rotate [--keep 5000]      # trim .memovault/ledger.log
 ```
 
 ### Graph
@@ -216,12 +223,12 @@ This skill is meant to be always on, not only triggered by an explicit
 ### Recall (automatic)
 
 At the start of answering a user request:
-1. Run one `search "<narrow keywords>"` (prefer `--limit 10` or tighter).
-2. Rank hits: prefer `heat: evergreen` then `growing`; prefer
-   `kind: persona|scenario|skill|atom` over `raw` / pure `daily/` noise.
-3. Progressive disclosure: use titles/snippets first; `read` at most **3** notes
-   per task (usually 1). Weave relevant knowledge into the answer and cite the
-   vault note when it materially affects the answer.
+1. Run one `recall "<narrow keywords>"` (prefer `--limit 5`). Fall back to
+   `search` if needed.
+2. Helper excludes `kind: raw` and ranks by heat/kind. Progressive disclosure:
+   use titles/snippets first; `read` at most **3** notes per task (usually 1).
+3. When a note materially affects the answer, run `cite "<title>"` and mention
+   the note briefly.
 4. If the vault is empty or nothing matches, skip silently (do not narrate).
 
 ### Capture (semi-automatic)
@@ -242,13 +249,10 @@ design rationale, or non-obvious fact):
 
 ### Distill and provenance
 
-- Raw capture (`daily/` lines, `kind: raw`, or inbox) is L0 evidence, not the
-  end state.
-- When durable knowledge appears, create or update an `atom` or `scenario` note.
-  Set `sources: ["YYYY-MM-DD"]` (or note titles) **and** body wikilinks back to
-  the raw note. Canonical daily link: `[[YYYY-MM-DD]]` (path form
-  `daily/YYYY-MM-DD.md` also works with `read` / `locate`).
-- Optionally leave a one-line pointer on the daily note linking to the new atom.
+- L0 evidence is `kind: raw` (typically `brain/inbox/`). `daily/` is legacy for
+  humans only; do not use it as the default agent capture path.
+- Prefer `distill "<raw>" <domain> "<Title>" --kind atom|scenario`, or create
+  an atom/scenario with `sources` and body `[[raw-title]]`.
 - Never delete raw evidence without explicit user consent.
 - `kind: persona` is rare (stable preferences / hard constraints). Do not start
   as `evergreen` unless the user confirms; otherwise seedling and suggest
@@ -259,9 +263,15 @@ design rationale, or non-obvious fact):
 When the turn produced a reusable how-to that would save future turns:
 1. Propose `skills/<Title>` with `--kind skill`, or write immediately on explicit
    remember phrases.
-2. Structure the body like `templates/skill.md`: Trigger, Steps, Verify, Related.
+2. Structure the body: Trigger, Steps, Verify, Related (see CLASSIFICATION /
+   protocol; vault `templates/` are optional for humans only).
 3. Link related domain atoms/scenarios with `[[wikilinks]]`.
 
+### Health (self-check)
+
+When the user asks about memory health, or inbox/raw is piling up, run `health`
+and suggest distill / promote / linking from the metrics. Do not silently rewrite
+the vault.
 ## 7. Suggested capture flow
 
 1. `preflight` once.
@@ -304,5 +314,8 @@ deprecation warning if it sees `MM_FORCE_FS=1`.
 ## 10. Out of scope (this version)
 
 - Vector / semantic search: deferred. The architecture reserves a slot; see
-  `docs/DEVELOPMENT.md`. For now use full text `search` plus tags and backlinks.
+  `docs/DEVELOPMENT.md`. For now use `recall` / full text `search` plus tags and
+  backlinks.
 - Obsidian Sync, Publish, Bases, plugins: not exposed by this skill.
+- Human-rated answer quality scores: `health` uses proxy metrics only
+  (cite_rate, skill_reuse, promote_rate, recapture_dup).

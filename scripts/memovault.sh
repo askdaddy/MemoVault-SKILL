@@ -98,6 +98,8 @@ MM_VAULT="${AGENT_MEMO_VAULT:-$HOME/.agent-memo-vault}"
 . "$MM_ROOT/lib/rewrite.sh"
 # shellcheck source=lib/classify.sh
 . "$MM_ROOT/lib/classify.sh"
+# shellcheck source=lib/obs.sh
+. "$MM_ROOT/lib/obs.sh"
 
 # MM_FORCE_FS is deprecated. The runtime is always shell/fs now; if a caller
 # still exports it (e.g. an old env.sh or e2e harness), warn once and ignore.
@@ -169,14 +171,20 @@ Capture / edit:
   append <note> "<markdown>"
   prepend <note> "<markdown>"   (inserted after frontmatter)
   read <note>
-  daily                         show today's daily note
-  daily:append "<line>"         append to today's daily note
+  distill <raw> <domain> <title> [--kind atom|scenario]
+  daily                         (legacy) show today's daily note
+  daily:append "<line>"         (legacy) append to today's daily note
 
 Retrieve:
-  search <query> [--limit N]    full text search
+  search <query> [--limit N] [--domain D] [--kind K] [--heat H] [--include-raw]
+                                full text in brain/; excludes kind:raw by default
+  recall <query> [--limit N]    ranked recall summary (default limit 5)
+  cite <title>                  record that a note was used in an answer
   tags                          all tags with counts
   tag <name> | by-tag <name>    notes bearing a tag
   by-heat                       notes grouped by heat tier
+  health | stats                vault + ledger metrics (L0-L2 proxies)
+  ledger:rotate [--keep N]      trim ledger.log (default keep 5000 lines)
 
 Graph:
   backlinks <note>              notes linking to this note
@@ -208,9 +216,14 @@ main() {
     append)       mmfs_append "${1:-}" "${2:-}" ;;
     prepend)      mmfs_prepend "${1:-}" "${2:-}" ;;
     read)         mmfs_read "${1:-}" ;;
+    distill)      mmfs_distill "$@" ;;
     daily)        mmfs_daily ;;
     daily:append) mmfs_daily_append "${1:-}" ;;
     search)       mmfs_search "$@" ;;
+    recall)       mmfs_recall "$@" ;;
+    cite)         mm_obs_cite "${1:-}" ;;
+    health|stats) mm_obs_health ;;
+    ledger:rotate) mm_obs_rotate "$@" ;;
     tags)         mmfs_tags ;;
     tag)          mmfs_tag "${1:-}" ;;
     by-tag)       mmfs_tag "${1:-}" ;;

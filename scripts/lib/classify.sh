@@ -33,6 +33,10 @@ mm_promote() {
   local rel="${file#"$MM_VAULT"/}"
   mmfs_set_prop "$file" heat "$next"
   mmfs_set_prop "$file" updated "$today"
+  local t
+  t="$(mmfs_get_prop "$file" title)"
+  [ -n "$t" ] || t="$(basename "$file" .md)"
+  mm_obs_log "event=promote" "title=$t" "from=${cur:-unset}" "to=$next"
   mm_log "promoted: ${cur:-<unset>} -> ${next}  (${rel})"
 }
 

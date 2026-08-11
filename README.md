@@ -11,7 +11,7 @@ same vault in Obsidian for browsing.
 | | |
 |---|---|
 | Skill name | `memovault` |
-| Version | `0.5.1` (see `VERSION`) |
+| Version | `0.6.0` (see `VERSION`) |
 | Skill source (after install) | `~/.agents/skills/memovault/` |
 | Knowledge vault | `~/.agent-memo-vault/` |
 | Vault override | `AGENT_MEMO_VAULT` |
@@ -24,13 +24,16 @@ Coding agents forget across sessions. MemoVault gives them a durable, local
 second brain: capture once, link with `[[wikilinks]]`, retrieve by search / tags /
 backlinks, and keep promoting notes as they mature.
 
-Agents follow an always-on memory protocol (auto recall, semi-auto capture,
-distill raw evidence into atoms/scenarios, and skill SOPs under `brain/skills/`).
+Agents follow an always-on memory protocol (`recall`, semi-auto capture,
+`distill` from inbox/raw into atoms/scenarios, skill SOPs under `brain/skills/`,
+and `health` proxy metrics). `daily/` is legacy/human-only; vault `templates/`
+are optional.
 
 ## Features
 
-- **Capture / edit:** `new`, `append`, `prepend`, `read`, `daily`, `daily:append`
-- **Retrieve:** full-text `search`, `tags` / `by-tag`, `by-heat`
+- **Capture / edit:** `new`, `append`, `prepend`, `read`, `distill`; `daily` (legacy)
+- **Retrieve:** ranked `recall`, filtered `search`, `tags` / `by-tag`, `by-heat`
+- **Observability:** `cite`, `health`/`stats`, `.memovault/ledger.log`
 - **Graph:** `backlinks`, `links`, `orphans`, `unresolved`
 - **Organize:** `move`, `rename` (link-safe: rewrites `[[wikilinks]]` across the
   vault), `promote`, `moc`
@@ -105,12 +108,13 @@ Canonical agent contract: `SKILL.md`.
 
 Injected adapters tell agents to:
 
-1. **Recall** at the start of a task (`search`, prefer evergreen/growing and richer kinds)
+1. **Recall** at the start of a task (`recall`, fall back to `search`)
 2. **Propose then capture** durable knowledge (or write immediately on explicit
    "remember" / "记一下" phrases)
-3. **Distill** daily/raw evidence into `atom` / `scenario` with `sources` and
-   `[[YYYY-MM-DD]]` provenance links
-4. **Skill SOPs** under `brain/skills/` with `--kind skill` (see `templates/skill.md`)
+3. **Distill** inbox/raw into `atom` / `scenario` via `distill` (or `sources` +
+   `[[raw-title]]`)
+4. **Skill SOPs** under `brain/skills/` with `--kind skill`
+5. **Health** via `health` when memory looks stale or the user asks
 
 ## Testing
 

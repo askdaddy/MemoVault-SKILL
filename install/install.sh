@@ -443,8 +443,8 @@ mm_verify() {
   fi
 
   mm_note "verify vault: $VAULT"
-  if [ ! -d "$VAULT/brain" ] || [ ! -d "$VAULT/templates" ]; then
-    mm_verify_line FAIL vault "scaffold incomplete (need brain/ and templates/ under $VAULT)"
+  if [ ! -d "$VAULT/brain" ]; then
+    mm_verify_line FAIL vault "scaffold incomplete (need brain/ under $VAULT)"
     fail=1
   else
     mm_verify_line OK vault "$VAULT"

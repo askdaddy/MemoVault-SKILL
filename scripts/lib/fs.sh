@@ -122,7 +122,40 @@ mmfs_new() {
     printf '# %s\n\n' "$title_clean"
     [ -n "$body" ] && printf '%s\n' "$body"
   } > "$file"
+  mm_obs_log "event=capture" "title=$title_clean" "kind=${kind:--}" "domain=$domain" "op=new"
   printf '%s\n' "${file#"$MM_VAULT"/}"
+}
+
+# Distill a raw note into atom|scenario. Usage:
+# mmfs_distill <raw-ref> <domain> <title> [--kind atom|scenario]
+mmfs_distill() {
+  local raw_ref="${1:-}" domain="${2:-}" title="${3:-}"
+  shift 3 2>/dev/null || true
+  local kind="atom"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --kind) kind="${2:-atom}"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  [ -n "$raw_ref" ] && [ -n "$domain" ] && [ -n "$title" ] || \
+    mm_die "usage: distill <raw-ref> <domain> <title> [--kind atom|scenario]"
+  case "$kind" in
+    atom|scenario) ;;
+    *) mm_die "distill kind must be atom|scenario" ;;
+  esac
+  local raw_file raw_title title_clean dest
+  raw_file="$(mmfs_locate "$raw_ref")"
+  [ -n "$raw_file" ] && [ -f "$raw_file" ] || mm_die "raw not found: $raw_ref"
+  raw_title="$(mmfs_get_prop "$raw_file" title)"
+  [ -n "$raw_title" ] || raw_title="$(basename "$raw_file" .md)"
+  title_clean="$(mmfs_sanitize_title "$title")"
+  mmfs_new "$domain" "$title_clean" "" "See [[$raw_title]]." "$kind"
+  dest="$(mmfs_note_path "$domain" "$title_clean")"
+  mmfs_set_prop "$dest" sources "[$raw_title]"
+  printf '\nDistilled to [[%s]]\n' "$title_clean" >> "$raw_file"
+  mm_obs_log "event=distill" "from=$raw_title" "to=$title_clean"
+  printf '%s\n' "${dest#"$MM_VAULT"/}"
 }
 
 mmfs_append() {
@@ -133,6 +166,10 @@ mmfs_append() {
     printf '\n'
     printf '%s\n' "$content"
   } >> "$file"
+  local t
+  t="$(mmfs_get_prop "$file" title)"
+  [ -n "$t" ] || t="$(basename "$file" .md)"
+  mm_obs_log "event=capture" "title=$t" "kind=$(mmfs_get_prop "$file" kind)" "domain=$(mmfs_get_prop "$file" domain)" "op=append"
   printf '%s\n' "${file#"$MM_VAULT"/}"
 }
 
@@ -159,6 +196,10 @@ mmfs_read() {
   local ref="$1"
   local file; file="$(mmfs_locate "$ref")"
   [ -n "$file" ] && [ -f "$file" ] || mm_die "note not found: $ref"
+  local t
+  t="$(mmfs_get_prop "$file" title)"
+  [ -n "$t" ] || t="$(basename "$file" .md)"
+  mm_obs_log "event=read" "title=$t"
   cat "$file"
 }
 
@@ -221,27 +262,231 @@ mmfs_set_prop() {
   mv "$tmp" "$file"
 }
 
+# Return 0 if note file passes search filters. Args: file domain kind heat include_raw
+mmfs_search_file_ok() {
+  local file="$1" want_domain="$2" want_kind="$3" want_heat="$4" include_raw="$5"
+  local rel prop
+  rel="${file#"$MM_VAULT"/}"
+  case "$rel" in
+    daily/*|.memovault/*) return 1 ;;
+  esac
+  if [ "$include_raw" != 1 ]; then
+    prop="$(mmfs_get_prop "$file" kind)"
+    [ "$prop" = raw ] && return 1
+  fi
+  if [ -n "$want_domain" ]; then
+    prop="$(mmfs_get_prop "$file" domain)"
+    [ "$prop" = "$want_domain" ] || return 1
+  fi
+  if [ -n "$want_kind" ]; then
+    prop="$(mmfs_get_prop "$file" kind)"
+    [ "$prop" = "$want_kind" ] || return 1
+  fi
+  if [ -n "$want_heat" ]; then
+    prop="$(mmfs_get_prop "$file" heat)"
+    [ -n "$prop" ] || prop="seedling"
+    [ "$prop" = "$want_heat" ] || return 1
+  fi
+  return 0
+}
+
+# Full-text search under brain/. Default excludes kind:raw. daily/ is outside
+# the search root. Flags: --limit N --domain D --kind K --heat H --include-raw
 mmfs_search() {
-  local q="$1"; shift
-  local limit=""
+  local q="${1:-}"; shift 2>/dev/null || true
+  local limit="" domain="" kind="" heat="" include_raw=0
   while [ $# -gt 0 ]; do
     case "$1" in
-      --limit) limit="$2"; shift 2 ;;
+      --limit) limit="${2:-}"; shift 2 ;;
+      --domain) domain="${2:-}"; shift 2 ;;
+      --kind) kind="${2:-}"; shift 2 ;;
+      --heat) heat="${2:-}"; shift 2 ;;
+      --include-raw) include_raw=1; shift ;;
       *) shift ;;
     esac
   done
-  [ -n "$q" ] || mm_die "usage: search <query>"
-  local out
+  [ -n "$q" ] || mm_die "usage: search <query> [--limit N] [--domain D] [--kind K] [--heat H] [--include-raw]"
+  mmfs_ensure_vault
+  [ -d "$MM_VAULT/brain" ] || return 0
+
+  local raw="" line abs rel fpath kept=0
   if command -v rg >/dev/null 2>&1; then
-    out="$(rg --no-heading -n -- "$q" "$MM_VAULT" 2>/dev/null)"
+    raw="$(rg --no-heading -n -- "$q" "$MM_VAULT/brain" 2>/dev/null || true)"
   else
-    out="$(grep -rn -- "$q" "$MM_VAULT" 2>/dev/null)"
+    raw="$(grep -rn -- "$q" "$MM_VAULT/brain" 2>/dev/null || true)"
   fi
-  if [ -n "$limit" ]; then
-    printf '%s\n' "$out" | sed "s#^$(printf '%s' "$MM_VAULT")/##" | head -n "$limit"
+  [ -n "$raw" ] || return 0
+
+  # Cache ok/fail per absolute file path to avoid re-reading frontmatter.
+  # Bash 3.2: encode as newline list "path<TAB>0|1"
+  local cache="" cache_hit ok
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "$line" ] || continue
+    case "$line" in
+      "$MM_VAULT"/*)
+        rel="${line#"$MM_VAULT"/}"
+        ;;
+      *)
+        rel="$line"
+        ;;
+    esac
+    # rel is path:lineno:text — split on first two colons after .md
+    fpath="$(printf '%s\n' "$rel" | awk -F: '
+      {
+        p=$1
+        for (i=2; i<=NF; i++) {
+          if (p ~ /\.md$/) { print p; exit }
+          p=p ":" $i
+        }
+        print $1
+      }')"
+    abs="$MM_VAULT/$fpath"
+    [ -f "$abs" ] || continue
+
+    cache_hit="$(printf '%s\n' "$cache" | awk -F'	' -v p="$abs" '$1==p { print $2; exit }')"
+    if [ -n "$cache_hit" ]; then
+      ok="$cache_hit"
+    else
+      if mmfs_search_file_ok "$abs" "$domain" "$kind" "$heat" "$include_raw"; then
+        ok=1
+      else
+        ok=0
+      fi
+      cache="${cache}${abs}	${ok}
+"
+    fi
+    [ "$ok" = 1 ] || continue
+    printf '%s\n' "$rel"
+    kept=$((kept + 1))
+    if [ -n "$limit" ] && [ "$kept" -ge "$limit" ]; then
+      break
+    fi
+  done <<EOF
+$raw
+EOF
+}
+
+# Heat rank: evergreen=3 growing=2 seedling/other=1
+mmfs_heat_score() {
+  case "$1" in
+    evergreen) printf '3' ;;
+    growing) printf '2' ;;
+    *) printf '1' ;;
+  esac
+}
+
+# Kind rank: persona|skill|scenario|atom=2, empty/other=1, raw=0
+mmfs_kind_score() {
+  case "$1" in
+    persona|skill|scenario|atom) printf '2' ;;
+    raw) printf '0' ;;
+    *) printf '1' ;;
+  esac
+}
+
+# Ranked recall summary. Same default filters as search (no raw). Default limit 5.
+# Lines: path=... title=... kind=... heat=... snippet=...
+mmfs_recall() {
+  local q="${1:-}"; shift 2>/dev/null || true
+  local limit=5
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --limit) limit="${2:-5}"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  [ -n "$q" ] || mm_die "usage: recall <query> [--limit N]"
+  mmfs_ensure_vault
+  [ -d "$MM_VAULT/brain" ] || return 0
+
+  local raw="" line abs rel fpath text snippet
+  local title kind heat updated hs ks
+  local rows="" seen=""
+  local q_tok
+  q_tok="$(printf '%s' "$q" | tr ' ' '_')"
+
+  if command -v rg >/dev/null 2>&1; then
+    raw="$(rg --no-heading -n -- "$q" "$MM_VAULT/brain" 2>/dev/null || true)"
   else
-    printf '%s\n' "$out" | sed "s#^$(printf '%s' "$MM_VAULT")/##"
+    raw="$(grep -rn -- "$q" "$MM_VAULT/brain" 2>/dev/null || true)"
   fi
+  if [ -z "$raw" ]; then
+    mm_obs_log "event=recall" "q=$q_tok" "hits=0" "top="
+    return 0
+  fi
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "$line" ] || continue
+    case "$line" in
+      "$MM_VAULT"/*) rel="${line#"$MM_VAULT"/}" ;;
+      *) rel="$line" ;;
+    esac
+    fpath="$(printf '%s\n' "$rel" | awk -F: '
+      {
+        p=$1
+        for (i=2; i<=NF; i++) {
+          if (p ~ /\.md$/) { print p; exit }
+          p=p ":" $i
+        }
+        print $1
+      }')"
+    abs="$MM_VAULT/$fpath"
+    [ -f "$abs" ] || continue
+    case "$seen" in
+      *"|$fpath|"*) continue ;;
+    esac
+    mmfs_search_file_ok "$abs" "" "" "" 0 || continue
+    seen="${seen}|$fpath|"
+
+    text="$(printf '%s\n' "$rel" | awk -F: '
+      {
+        p=$1
+        idx=2
+        for (i=2; i<=NF; i++) {
+          if (p ~ /\.md$/) { idx=i+1; break }
+          p=p ":" $i
+          idx=i+1
+        }
+        out=""
+        for (j=idx; j<=NF; j++) {
+          if (out != "") out=out ":"
+          out=out $j
+        }
+        print out
+      }')"
+    snippet="$(printf '%s' "$text" | tr '\n\r\t' ' ' | sed -E 's/  +/ /g; s/^ //; s/ $//' | cut -c1-120)"
+
+    title="$(mmfs_get_prop "$abs" title)"
+    [ -n "$title" ] || title="$(basename "$fpath" .md)"
+    kind="$(mmfs_get_prop "$abs" kind)"
+    [ -n "$kind" ] || kind="-"
+    heat="$(mmfs_get_prop "$abs" heat)"
+    [ -n "$heat" ] || heat="seedling"
+    updated="$(mmfs_get_prop "$abs" updated)"
+    [ -n "$updated" ] || updated="1970-01-01"
+    hs="$(mmfs_heat_score "$heat")"
+    ks="$(mmfs_kind_score "$kind")"
+    rows="${rows}${hs}	${ks}	${updated}	${fpath}	${title}	${kind}	${heat}	${snippet}
+"
+  done <<EOF
+$raw
+EOF
+
+  if [ -z "$rows" ]; then
+    mm_obs_log "event=recall" "q=$q_tok" "hits=0" "top="
+    return 0
+  fi
+
+  local ranked titles hits=0 top_tok
+  ranked="$(printf '%s' "$rows" | sort -t'	' -k1,1nr -k2,2nr -k3,3r | head -n "$limit")"
+  hits="$(printf '%s\n' "$ranked" | grep -c . || true)"
+  titles="$(printf '%s\n' "$ranked" | awk -F'	' '{ printf "%s%s", (NR>1?",":""), $5 }')"
+  top_tok="$(printf '%s' "$titles" | tr ' ' '_')"
+  mm_obs_log "event=recall" "q=$q_tok" "hits=$hits" "top=$top_tok"
+  printf '%s\n' "$ranked" | while IFS='	' read -r _hs _ks _upd fpath title kind heat snippet; do
+    [ -n "$fpath" ] || continue
+    printf 'path=%s title=%s kind=%s heat=%s snippet=%s\n' "$fpath" "$title" "$kind" "$heat" "$snippet"
+  done
 }
 
 # All tags with counts (expects inline "tags: [a, b]" frontmatter).

@@ -10,7 +10,7 @@ markdown 读写 vault 目录下同一批文件。人可以另外用 Obsidian 桌
 | | |
 |---|---|
 | Skill 名 | `memovault` |
-| 版本 | `0.5.1`（见 `VERSION`） |
+| 版本 | `0.6.0`（见 `VERSION`） |
 | 安装后 skill 源 | `~/.agents/skills/memovault/` |
 | 知识库 vault | `~/.agent-memo-vault/` |
 | Vault 覆盖变量 | `AGENT_MEMO_VAULT` |
@@ -22,13 +22,16 @@ markdown 读写 vault 目录下同一批文件。人可以另外用 Obsidian 桌
 Agent 跨会话会丢上下文。MemoVault 提供本地、持久的第二大脑：一次写入，用
 `[[wikilinks]]` 串联，用搜索 / 标签 / 回链找回，并按成熟度 `promote`。
 
-Agent 遵循 always-on 记忆协议：自动召回、半自动沉淀、把 raw/日记蒸馏成
-atom/scenario，以及把可复用 SOP 记到 `brain/skills/`。
+Agent 遵循 always-on 记忆协议：`recall` 自动召回、半自动沉淀、把 inbox/raw
+蒸馏成 atom/scenario，并把可复用 SOP 记到 `brain/skills/`。`daily/` 仅为
+人用/legacy；vault `templates/` 可选（非 agent 写入真源）。`health` 提供
+L0–L2 代理指标用于自评。
 
 ## 能力
 
-- **写入 / 编辑：** `new`、`append`、`prepend`、`read`、`daily`、`daily:append`
-- **检索：** 全文 `search`、`tags` / `by-tag`、`by-heat`
+- **写入 / 编辑：** `new`、`append`、`prepend`、`read`、`distill`；`daily`（legacy）
+- **检索：** `recall`（加权摘要）、`search`（可按 domain/kind/heat 过滤）、`tags` / `by-tag`、`by-heat`
+- **可观测：** `cite`、`health`/`stats`、`.memovault/ledger.log`
 - **图谱：** `backlinks`、`links`、`orphans`、`unresolved`
 - **整理：** `move`、`rename`（链接安全：跨 vault 改写 `[[wikilinks]]`）、`promote`、`moc`
 - **分层记忆：** 可选 `kind` + `sources`（蒸馏溯源）
@@ -37,7 +40,6 @@ atom/scenario，以及把可复用 SOP 记到 `brain/skills/`。
 - **多 Agent 安装：** Claude、Cursor、Codex、Gemini、Cline、Copilot 等
 
 向量 / 语义搜索刻意延后，见 `docs/DEVELOPMENT.md`。
-
 ## 环境要求
 
 - Bash（兼容 macOS 自带的 3.2）
@@ -98,10 +100,11 @@ Agent 侧契约以 `SKILL.md` 为准。
 
 注入到各 agent 的适配器会要求：
 
-1. **召回**：任务开始时 `search`，优先 evergreen/growing 与更丰富的 kind
+1. **召回**：任务开始时 `recall`（失败再用 `search`）；helper 已按 heat/kind 排序
 2. **先提议再写入**：沉淀可复用知识；用户明确说「记一下 / remember this」则立即写
-3. **蒸馏**：把日记/raw 提炼为 `atom` / `scenario`，带 `sources` 与 `[[YYYY-MM-DD]]` 溯源
-4. **Skill SOP**：`brain/skills/` + `--kind skill`（见 `templates/skill.md`）
+3. **蒸馏**：`distill` 或手写把 inbox/raw 提炼为 `atom` / `scenario`，带 `sources` 与 `[[raw-title]]`
+4. **Skill SOP**：`brain/skills/` + `--kind skill`（体例见协议；vault templates 可选）
+5. **健康度**：适时 `health`，按指标建议 distill/promote/补链（不静默改库）
 
 ## 测试
 

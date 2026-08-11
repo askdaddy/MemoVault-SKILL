@@ -59,7 +59,7 @@ folder tree. Inspired by L0-L3 + Skill assets; recall prefers higher structure.
 
 | `kind` | Role | Typical home | Default heat on `new` |
 |---|---|---|---|
-| `raw` | Fleeting evidence (L0) | `daily/` or `brain/inbox/` | seedling |
+| `raw` | Fleeting evidence (L0) | `brain/inbox/` (preferred); `daily/` is legacy | seedling |
 | `atom` | Fact, decision, constraint (L1) | `brain/<domain>/` | seedling |
 | `scenario` | Project or scene block (L2) | `brain/<domain>/` + MOCs | seedling |
 | `persona` | Stable preference / hard constraint (L3) | rare domain notes | seedling |
@@ -124,17 +124,20 @@ aliases: [<Domain> index]
 
 The MOC is regenerated on demand; it is not hand edited.
 
-## 7. Daily notes
+## 7. Daily notes (legacy)
 
-`daily/YYYY-MM-DD.md`. Used for time based capture (log lines, tasks, fleeting
-notes). Treat as L0 / `kind: raw` evidence. When an entry holds reusable
-knowledge, distill into an `atom` or `scenario` domain note with `sources` and
-wikilinks back to the daily note; optionally leave a one-line pointer on
-the daily note.
+`daily/YYYY-MM-DD.md` is **legacy / optional for humans** browsing in Obsidian.
+The agent main path does **not** use daily as L0 evidence.
 
-Canonical distill link: `[[YYYY-MM-DD]]` (Obsidian daily title = filename stem).
-Path form `daily/YYYY-MM-DD.md` also works with `read` / `locate`. In fs mode the
-helper resolves both; `unresolved` treats an existing daily file as resolved.
+Agent L0: `kind: raw` notes, typically under `brain/inbox/`. Distill into
+`atom` or `scenario` with `sources` and body `[[raw-title]]` (or use the
+`distill` helper). Never delete raw evidence without explicit user consent.
+
+Existing `daily/` files remain readable. `search`/`recall` do not scan `daily/`
+by default. `health` may report `legacy_daily_count` as a migration hint.
+
+Canonical date wikilink `[[YYYY-MM-DD]]` still resolves when a daily file exists
+(compatibility with older notes).
 
 ## 8. Naming conventions
 

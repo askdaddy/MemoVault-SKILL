@@ -319,6 +319,10 @@ EOF
   local since recall_7d=0 capture_7d=0 cite_7d=0 promote_7d=0
   local recall_hits_7d=0 capture_without_recall_7d=0
   local skill_reuse=0 recapture_dup=0 cite_rate=-1 promote_rate=-1
+  local search_7d=0 capture_after_miss_7d=0 recapture_new_dup=0
+  local recall_hit_rate=-1 kind_other_pct=-1
+  local miss_days="" cap_days="" op
+  local titles_new_seen="" dup_new_titles=""
   local p line ev ts_day hits title_n titles_seen="" dup_titles=""
   local ledger_ok=1
   since="$(mm_obs_days_ago 7)"
@@ -341,6 +345,9 @@ EOF
           recall_7d=$((recall_7d + 1))
           hits="$(mm_obs_field "$line" hits)"
           [ "${hits:-0}" -gt 0 ] 2>/dev/null && recall_hits_7d=$((recall_hits_7d + 1))
+          if [ "${hits:-0}" -eq 0 ] 2>/dev/null; then
+            miss_days="${miss_days}|$ts_day|"
+          fi
           ;;
         capture)
           capture_7d=$((capture_7d + 1))
@@ -356,11 +363,32 @@ EOF
               *) titles_seen="${titles_seen}|$title_n|" ;;
             esac
           fi
+          cap_days="${cap_days}${ts_day} "
+          op="$(mm_obs_field "$line" op)"
+          if [ "$op" = new ] && [ -n "$title_n" ]; then
+            case "$titles_new_seen" in
+              *"|$title_n|"*)
+                case "$dup_new_titles" in
+                  *"|$title_n|"*) ;;
+                  *) dup_new_titles="${dup_new_titles}|$title_n|"; recapture_new_dup=$((recapture_new_dup + 1)) ;;
+                esac
+                ;;
+              *) titles_new_seen="${titles_new_seen}|$title_n|" ;;
+            esac
+          fi
           ;;
         cite) cite_7d=$((cite_7d + 1)) ;;
         promote) promote_7d=$((promote_7d + 1)) ;;
+        search) search_7d=$((search_7d + 1)) ;;
       esac
     done < "$p"
+
+    for d in $cap_days; do
+      [ -n "$d" ] || continue
+      case "$miss_days" in
+        *"|$d|"*) capture_after_miss_7d=$((capture_after_miss_7d + 1)) ;;
+      esac
+    done
 
     # skill_reuse: distinct skill titles with read|cite count >= 2 in window
     skill_reuse="$(awk -v since="$since" '
@@ -395,6 +423,12 @@ EOF
   if [ "$capture_7d" -gt 0 ]; then
     promote_rate=$((promote_7d * 100 / capture_7d))
   fi
+  if [ "$notes_total" -gt 0 ]; then
+    kind_other_pct=$((kind_other * 100 / notes_total))
+  fi
+  if [ "$recall_7d" -gt 0 ]; then
+    recall_hit_rate=$((recall_hits_7d * 100 / recall_7d))
+  fi
 
   printf 'notes_total=%s\n' "$notes_total"
   printf 'kind_atom=%s\n' "$kind_atom"
@@ -403,6 +437,7 @@ EOF
   printf 'kind_persona=%s\n' "$kind_persona"
   printf 'kind_skill=%s\n' "$kind_skill"
   printf 'kind_other=%s\n' "$kind_other"
+  printf 'kind_other_pct=%s\n' "$kind_other_pct"
   printf 'heat_seedling=%s\n' "$heat_seedling"
   printf 'heat_growing=%s\n' "$heat_growing"
   printf 'heat_evergreen=%s\n' "$heat_evergreen"
@@ -426,6 +461,12 @@ EOF
   printf 'skill_reuse=%s\n' "${skill_reuse:-0}"
   printf 'promote_rate=%s\n' "$promote_rate"
   printf 'recapture_dup=%s\n' "$recapture_dup"
+  printf 'search_7d=%s\n' "$search_7d"
+  printf 'recall_hits_7d=%s\n' "$recall_hits_7d"
+  printf 'recall_hit_rate=%s\n' "$recall_hit_rate"
+  printf 'capture_after_miss_7d=%s\n' "$capture_after_miss_7d"
+  printf 'cite_7d=%s\n' "$cite_7d"
+  printf 'recapture_new_dup=%s\n' "$recapture_new_dup"
 
   # Soft hints for agent self-check (not automatic vault mutations).
   if [ "$inbox_raw_count" -ge 3 ]; then
@@ -439,5 +480,14 @@ EOF
   fi
   if [ "$provenance_pct" -ge 0 ] 2>/dev/null && [ "$provenance_pct" -lt 40 ] 2>/dev/null && [ "$structured" -ge 2 ]; then
     printf 'hint=low_provenance\n'
+  fi
+  if [ "$recall_7d" -ge 5 ] && [ "$recall_hit_rate" -ge 0 ] 2>/dev/null && [ "$recall_hit_rate" -lt 40 ]; then
+    printf 'hint=low_recall_hit_rate\n'
+  fi
+  if [ "$capture_after_miss_7d" -ge 3 ]; then
+    printf 'hint=capture_after_miss\n'
+  fi
+  if [ "$notes_total" -ge 10 ] && [ "$kind_other_pct" -ge 40 ]; then
+    printf 'hint=high_kind_other\n'
   fi
 }

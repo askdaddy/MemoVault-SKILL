@@ -79,3 +79,103 @@ e2e_mm dedupe "$note_two" --limit 5 >/dev/null 2>&1 || true
 after_d="$(grep -c 'event=search' "$ledger" 2>/dev/null || true)"
 [ -n "$after_d" ] || after_d=0
 assert_eq "$before_d" "$after_d" "dedupe does not log event=search ($E2E_PHASE)"
+
+# --- 0.7.2 health fields ---
+hout="$(e2e_mm health 2>/dev/null || true)"
+assert_contains "$hout" "kind_other_pct=" "health prints kind_other_pct ($E2E_PHASE)"
+assert_contains "$hout" "search_7d=" "health prints search_7d ($E2E_PHASE)"
+assert_contains "$hout" "recall_hits_7d=" "health prints recall_hits_7d ($E2E_PHASE)"
+assert_contains "$hout" "recall_hit_rate=" "health prints recall_hit_rate ($E2E_PHASE)"
+assert_contains "$hout" "capture_after_miss_7d=" "health prints capture_after_miss_7d ($E2E_PHASE)"
+assert_contains "$hout" "cite_7d=" "health prints cite_7d ($E2E_PHASE)"
+assert_contains "$hout" "recapture_new_dup=" "health prints recapture_new_dup ($E2E_PHASE)"
+assert_contains "$hout" "cite_rate=" "health still prints cite_rate ($E2E_PHASE)"
+assert_contains "$hout" "recapture_dup=" "health still prints recapture_dup ($E2E_PHASE)"
+
+# old keys keep relative order; new L1 block comes after recapture_dup
+line_of() { printf '%s\n' "$hout" | grep -n "^${1}=" | head -1 | cut -d: -f1; }
+ko="$(line_of kind_other)"
+kop="$(line_of kind_other_pct)"
+cr="$(line_of cite_rate)"
+rd="$(line_of recapture_dup)"
+s7="$(line_of search_7d)"
+if [ -n "$ko" ] && [ -n "$kop" ] && [ "$ko" -lt "$kop" ]; then
+  e2e_pass "kind_other_pct follows kind_other ($E2E_PHASE)"
+else
+  e2e_fail "kind_other_pct follows kind_other ($E2E_PHASE)" "kind_other=$ko kind_other_pct=$kop"
+fi
+if [ -n "$cr" ] && [ -n "$rd" ] && [ -n "$s7" ] && [ "$cr" -lt "$rd" ] && [ "$rd" -lt "$s7" ]; then
+  e2e_pass "cite_rate then recapture_dup then search_7d ($E2E_PHASE)"
+else
+  e2e_fail "cite_rate then recapture_dup then search_7d ($E2E_PHASE)" "cite_rate=$cr recapture_dup=$rd search_7d=$s7"
+fi
+
+tok_miss_r="RECMISS_${E2E_STEM// /_}"
+e2e_mm recall "$tok_miss_r" --limit 3 >/dev/null 2>&1 || true
+e2e_mm new e2e "${E2E_STEM} AfterMiss" --kind atom --body "after miss" >/dev/null 2>&1 || true
+hout2="$(e2e_mm health 2>/dev/null || true)"
+case "$hout2" in
+  *capture_after_miss_7d=0*|*capture_after_miss_7d=-*) e2e_fail "capture_after_miss_7d >= 1 after miss+capture ($E2E_PHASE)" "out=$hout2" ;;
+  *capture_after_miss_7d=*) e2e_pass "capture_after_miss_7d >= 1 after miss+capture ($E2E_PHASE)" ;;
+  *) e2e_fail "capture_after_miss_7d present ($E2E_PHASE)" "out=$hout2" ;;
+esac
+
+dup_t="${E2E_STEM} DupNew"
+e2e_mm new e2e-a "$dup_t" --kind atom --body "dup-a" >/dev/null 2>&1 || true
+e2e_mm new e2e-b "$dup_t" --kind atom --body "dup-b" >/dev/null 2>&1 || true
+hout3="$(e2e_mm health 2>/dev/null || true)"
+case "$hout3" in
+  *recapture_new_dup=0*) e2e_fail "recapture_new_dup >= 1 after two-domain new ($E2E_PHASE)" "out=$hout3" ;;
+  *recapture_new_dup=*) e2e_pass "recapture_new_dup >= 1 after two-domain new ($E2E_PHASE)" ;;
+  *) e2e_fail "recapture_new_dup present ($E2E_PHASE)" "out=$hout3" ;;
+esac
+
+snap_new="$(printf '%s\n' "$hout3" | awk -F= '/^recapture_new_dup=/{print $2; exit}')"
+app_t="${E2E_STEM} AppendOnly"
+e2e_mm new e2e "$app_t" --kind atom --body "once" >/dev/null 2>&1 || true
+e2e_mm append "$app_t" "twice" >/dev/null 2>&1 || true
+e2e_mm append "$app_t" "thrice" >/dev/null 2>&1 || true
+hout4="$(e2e_mm health 2>/dev/null || true)"
+assert_contains "$hout4" "recapture_dup=" "recapture_dup still present after appends ($E2E_PHASE)"
+snap_new2="$(printf '%s\n' "$hout4" | awk -F= '/^recapture_new_dup=/{print $2; exit}')"
+# two-domain new already counted; append-only title must not bump recapture_new_dup
+assert_eq "$snap_new" "$snap_new2" "append-only repeats do not bump recapture_new_dup ($E2E_PHASE)"
+case "$hout4" in
+  *recapture_dup=0*) e2e_fail "recapture_dup >= 1 after append repeats ($E2E_PHASE)" "out=$hout4" ;;
+  *recapture_dup=*) e2e_pass "recapture_dup >= 1 after append repeats ($E2E_PHASE)" ;;
+  *) e2e_fail "recapture_dup present ($E2E_PHASE)" "out=$hout4" ;;
+esac
+
+# isolated vault: recall_hit_rate=-1 and new hints (do not reset E2E_VAULT)
+iso="$E2E_ROOT/iso-obs"
+mkdir -p "$iso"
+old_vault="$E2E_VAULT"
+E2E_VAULT="$iso"
+
+e2e_mm new iso "Only Note" --kind atom --body "solo" >/dev/null 2>&1 || true
+hiso0="$(e2e_mm health 2>/dev/null || true)"
+assert_contains "$hiso0" "recall_hit_rate=-1" "recall_hit_rate=-1 when no recall ($E2E_PHASE)"
+
+i=1
+while [ "$i" -le 5 ]; do
+  e2e_mm recall "ISOMISS${i}_${E2E_STEM}" --limit 3 >/dev/null 2>&1 || true
+  i=$((i + 1))
+done
+hiso1="$(e2e_mm health 2>/dev/null || true)"
+assert_contains "$hiso1" "hint=low_recall_hit_rate" "hint low_recall_hit_rate after 5 misses ($E2E_PHASE)"
+
+e2e_mm new iso "MissCap A" --kind atom --body "a" >/dev/null 2>&1 || true
+e2e_mm new iso "MissCap B" --kind atom --body "b" >/dev/null 2>&1 || true
+e2e_mm new iso "MissCap C" --kind atom --body "c" >/dev/null 2>&1 || true
+hiso2="$(e2e_mm health 2>/dev/null || true)"
+assert_contains "$hiso2" "hint=capture_after_miss" "hint capture_after_miss after miss day + 3 captures ($E2E_PHASE)"
+
+j=1
+while [ "$j" -le 10 ]; do
+  e2e_mm new iso "NoKind $j" --body "nk" >/dev/null 2>&1 || true
+  j=$((j + 1))
+done
+hiso3="$(e2e_mm health 2>/dev/null || true)"
+assert_contains "$hiso3" "hint=high_kind_other" "hint high_kind_other with 10+ unkinded notes ($E2E_PHASE)"
+
+E2E_VAULT="$old_vault"

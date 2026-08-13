@@ -23,6 +23,15 @@ mm_obs_log() {
   return 0
 }
 
+# Log event=search only when the public search subcommand set MM_SEARCH_OBS=1.
+# hits = unique notes in this invocation. Never returns non-zero.
+mm_obs_maybe_log_search() {
+  local q="$1" hits="${2:-0}" q_tok
+  [ "${MM_SEARCH_OBS:-0}" = 1 ] || return 0
+  q_tok="$(printf '%s' "$q" | tr ' ' '_')"
+  mm_obs_log "event=search" "q=$q_tok" "hits=$hits"
+}
+
 mm_obs_cite() {
   local title="${1:-}" file kind="-"
   [ -n "$title" ] || mm_die "usage: cite <title>"

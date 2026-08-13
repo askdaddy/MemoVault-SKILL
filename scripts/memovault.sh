@@ -246,7 +246,7 @@ main() {
     supersede)    mmfs_supersede "${1:-}" "${2:-}" ;;
     daily)        mmfs_daily ;;
     daily:append) mmfs_daily_append "${1:-}" ;;
-    search)       mmfs_search "$@" ;;
+    search)       MM_SEARCH_OBS=1 mmfs_search "$@" ;;
     recall)       mmfs_recall "$@" ;;
     cite)         mm_obs_cite "${1:-}" ;;
     feedback)     mm_obs_feedback "${1:-}" "${2:-}" ;;

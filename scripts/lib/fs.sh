@@ -239,7 +239,7 @@ EOF
     kept=$((kept + 1))
     [ "$kept" -ge "$limit" ] && break
   done <<EOF
-$(mmfs_search "$q" --limit "$limit" 2>/dev/null || true)
+$(MM_SEARCH_OBS=0 mmfs_search "$q" --limit "$limit" 2>/dev/null || true)
 EOF
 }
 
@@ -403,15 +403,21 @@ mmfs_search() {
   done
   [ -n "$q" ] || mm_die "usage: search <query> [--limit N] [--domain D] [--kind K] [--heat H] [--include-raw] [--include-superseded]"
   mmfs_ensure_vault
-  [ -d "$MM_VAULT/brain" ] || return 0
+  if [ ! -d "$MM_VAULT/brain" ]; then
+    mm_obs_maybe_log_search "$q" 0
+    return 0
+  fi
 
-  local raw="" line abs rel fpath kept=0
+  local raw="" line abs rel fpath kept=0 uniq=0 seen_files=""
   if command -v rg >/dev/null 2>&1; then
     raw="$(rg --no-heading -n -- "$q" "$MM_VAULT/brain" 2>/dev/null || true)"
   else
     raw="$(grep -rn -- "$q" "$MM_VAULT/brain" 2>/dev/null || true)"
   fi
-  [ -n "$raw" ] || return 0
+  if [ -z "$raw" ]; then
+    mm_obs_maybe_log_search "$q" 0
+    return 0
+  fi
 
   local cache="" cache_hit ok
   while IFS= read -r line || [ -n "$line" ]; do
@@ -445,6 +451,10 @@ mmfs_search() {
 "
     fi
     [ "$ok" = 1 ] || continue
+    case "$seen_files" in
+      *"|$abs|"*) ;;
+      *) seen_files="${seen_files}|$abs|"; uniq=$((uniq + 1)) ;;
+    esac
     printf '%s\n' "$rel"
     kept=$((kept + 1))
     if [ -n "$limit" ] && [ "$kept" -ge "$limit" ]; then
@@ -453,6 +463,7 @@ mmfs_search() {
   done <<EOF
 $raw
 EOF
+  mm_obs_maybe_log_search "$q" "$uniq"
 }
 
 # Heat rank: evergreen=3 growing=2 seedling/other=1

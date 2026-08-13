@@ -1,6 +1,6 @@
 ---
 name: memovault
-version: 0.7.1
+version: 0.7.2
 description: "Sink knowledge into a local Obsidian vault with bash. Use when the user wants to capture, save, record, or sink knowledge, notes, learnings, decisions, meeting takeaways, code snippets, or research into their memo vault / second brain / Obsidian knowledge base; or to create, edit, link, search, classify by domain, promote by heat, distill raw notes, recall ranked context, check vault health, or maintain backlinks and skill SOPs. Trigger phrases: 记到笔记 / 记一下 / 笔记里记一下 / 沉淀 / 沉淀一下 / 存到 vault / 存一下 / 存档 / 存到知识库 / 知识库 / 备忘录 / 双链 / 回链 / 按领域归档 / 提升热度 / 日记 / 每日笔记 / remember this / save this / save to vault / save to notes / memo it / note this / capture this / second brain / knowledge base / daily note / backlinks / link this note."
 ---
 
@@ -279,9 +279,18 @@ When the turn produced a reusable how-to that would save future turns:
 ### Health (self-check)
 
 When the user asks about memory health, or inbox/raw is piling up, run `health`
-and/or `suggest` and act on `hint=` / `suggest=` lines (`provenance_pct` /
-`cite_rate` / `orphan_pct` / `superseded_count`). Confirm before `promote`.
-Do not silently rewrite the vault.
+and/or `suggest` and act on `hint=` / `suggest=` lines. Prefer new hints when
+present (confirm with the user before any vault rewrite):
+
+- `low_recall_hit_rate`: narrow the recall query and retry.
+- `capture_after_miss`: after a miss, run `search` / `dedupe` before capture.
+- `high_kind_other`: add `kind` when missing; if invalid, set a legal kind.
+
+Treat `hint=low_cite_rate` as legacy: ignore it when a new hint is present, and
+do not use it as the sole action driver. Prefer `recall_hit_rate`,
+`recall_hits_7d`, `cite_7d`, `recapture_new_dup`, `kind_other_pct`. `search_7d`
+is informational (compare with `recall_7d`). `cite_rate` and `recapture_dup`
+are deprecated. Confirm before `promote`. Do not silently rewrite the vault.
 
 When knowledge is replaced, prefer `supersede "<Old>" "<New>"` over deleting.
 Before creating a note, run `dedupe "<title>"` and prefer `append` on hits.
@@ -332,4 +341,5 @@ deprecation warning if it sees `MM_FORCE_FS=1`.
   backlinks.
 - Obsidian Sync, Publish, Bases, plugins: not exposed by this skill.
 - Human-rated answer quality scores: `health` uses proxy metrics only
-  (cite_rate, skill_reuse, promote_rate, recapture_dup).
+  (`recall_hit_rate`, `cite_7d`, `recapture_new_dup`, `kind_other_pct`;
+  `cite_rate` / `recapture_dup` are deprecated).

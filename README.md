@@ -11,7 +11,7 @@ same vault in Obsidian for browsing.
 | | |
 |---|---|
 | Skill name | `memovault` |
-| Version | `0.7.1` (see `VERSION`) |
+| Version | `0.7.2` (see `VERSION`) |
 | Skill source (after install) | `~/.agents/skills/memovault/` |
 | Knowledge vault | `~/.agent-memo-vault/` |
 | Vault override | `AGENT_MEMO_VAULT` |
@@ -34,7 +34,7 @@ are optional.
 - **Capture / edit:** `new`, `append`, `prepend`, `read`, `distill`; `daily` (legacy)
 - **Retrieve:** ranked `recall` (FTS + one-hop graph RRF), filtered `search`,
   `tags` / `by-tag`, `by-heat`, `dedupe`, `eval`
-- **Observability:** `cite`, `feedback`, `suggest`, `health`/`stats`, ledger
+- **Observability:** `cite`, `feedback`, `suggest`, `health`/`stats`, ledger (`search`, `recall_hit_rate` hints)
 - **Graph:** `backlinks`, `links`, `orphans`, `unresolved`
 - **Organize:** `move`, `rename` (link-safe), `promote`, `supersede`, `moc`
 - **Layered memory:** optional `kind` + `status`/`supersedes` + `sources`

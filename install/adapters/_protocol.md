@@ -67,7 +67,13 @@ When the turn produced a reusable how-to:
   confirm before `promote`.
 - When the user asks about memory health, or inbox/raw is piling up, run
   `__MEMOVAULT_HELPER__ health` / `suggest` and act on `hint=` / `suggest=`
-  lines. Do not silently rewrite the vault.
+  lines. Prefer new hints when present (confirm before any rewrite):
+  `low_recall_hit_rate` (narrow recall), `capture_after_miss` (search/dedupe
+  before capture), `high_kind_other` (add or fix `kind`). Treat
+  `hint=low_cite_rate` as legacy. Prefer `recall_hit_rate`, `recall_hits_7d`,
+  `cite_7d`, `recapture_new_dup`, `kind_other_pct`; `search_7d` is
+  informational. `cite_rate` and `recapture_dup` are deprecated. Do not
+  silently rewrite the vault.
 
 ### 6. Guardrails
 

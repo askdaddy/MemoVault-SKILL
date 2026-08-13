@@ -100,7 +100,7 @@ anymore; the table is single-track.
 | `read` | `cat` |
 | `distill` | `new` atom/scenario + `sources` + raw pointer |
 | `daily` / `daily:append` | legacy `daily/YYYY-MM-DD.md` (not agent L0) |
-| `search` | `rg`/`grep` under `brain/`; filters; excludes raw + superseded by default |
+| `search` | `rg`/`grep` under `brain/`; filters; ledger `event=search` on the public subcommand only |
 | `recall` | FTS candidates + optional one-hop neighbors; RRF + heat/kind ranking |
 | `cite` / `feedback` | append ledger events |
 | `dedupe` | title-normalization near-duplicate candidates |
@@ -118,6 +118,19 @@ anymore; the table is single-track.
 | `promote` | awk edit frontmatter `heat` and `updated` |
 | `supersede` | mark old `status: superseded`; update new `supersedes` + pointers |
 | `moc` | list domain files, group by heat, write index |
+
+Ledger file: `$AGENT_MEMO_VAULT/.memovault/ledger.log` (not searchable).
+Events include `recall`, `search` (public `search` subcommand only; `dedupe`
+internal retrieval is not logged), `read`, `capture`, `cite`, `feedback`,
+`promote`, `distill`, `supersede`. `event=search` is independent of
+`event=recall` (0.6.0 optionally lumped them; 0.7.2 does not).
+
+`health` / `stats` print L0 vault counts plus L1/L2 ledger proxies. Added in
+0.7.2: `kind_other_pct`, `search_7d`, `recall_hits_7d`, `recall_hit_rate`,
+`capture_after_miss_7d`, `cite_7d`, `recapture_new_dup`, and hints
+`low_recall_hit_rate` / `capture_after_miss` / `high_kind_other`.
+`cite_rate` and `recapture_dup` remain with their original formulas
+(deprecated).
 
 ## 6. Data flow for a capture
 

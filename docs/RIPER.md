@@ -986,3 +986,22 @@ mode so distill provenance closes the loop.
 ### Review
 - `./scripts/e2e/run.sh`：pass=87 fail=0
 
+## 17. Entry: 可观测指标可信度 + hint 0.7.2（2026-08-13）
+
+### Research
+- 现网 `cite_rate` 用 `recall_hits_7d` 作分母，协议「调过 recall」会被读成「召回有用」。
+- `recapture_dup` 计入 `op=append`；`mmfs_search` 被 `dedupe` 复用。
+- 规格：`docs/superpowers/specs/2026-08-12-observability-metrics-hints-design.md`（2026-08-13 可行性修订）。
+
+### Innovate
+- 方案 1 Metrics+Hints；兼容 B 并列新字段；search 用 `MM_SEARCH_OBS` 门控。
+
+### Plan
+- `docs/superpowers/plans/2026-08-13-observability-metrics-hints.md`
+
+### Execute
+- `event=search` 仅公开 `search` 子命令；`health` 新键与三则 hint；协议 / SKILL / ARCHITECTURE / README* / VERSION `0.7.2`。
+
+### Review
+- `./scripts/e2e/run.sh`：pass=114 fail=0
+

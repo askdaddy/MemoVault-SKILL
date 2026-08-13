@@ -10,7 +10,7 @@ markdown 读写 vault 目录下同一批文件。人可以另外用 Obsidian 桌
 | | |
 |---|---|
 | Skill 名 | `memovault` |
-| 版本 | `0.7.1`（见 `VERSION`） |
+| 版本 | `0.7.2`（见 `VERSION`） |
 | 安装后 skill 源 | `~/.agents/skills/memovault/` |
 | 知识库 vault | `~/.agent-memo-vault/` |
 | Vault 覆盖变量 | `AGENT_MEMO_VAULT` |
@@ -31,7 +31,7 @@ L0–L2 代理指标用于自评。
 
 - **写入 / 编辑：** `new`、`append`、`prepend`、`read`、`distill`；`daily`（legacy）
 - **检索：** `recall`（FTS + 一跳图 RRF）、`search`（可过滤）、`dedupe`、`eval`
-- **可观测：** `cite`、`feedback`、`suggest`、`health`/`stats`、ledger
+- **可观测：** `cite`、`feedback`、`suggest`、`health`/`stats`、ledger（含 `search` 与 `recall_hit_rate` hint）
 - **图谱：** `backlinks`、`links`、`orphans`、`unresolved`
 - **整理：** `move`、`rename`（链接安全）、`promote`、`supersede`、`moc`
 - **分层记忆：** 可选 `kind` + `status`/`supersedes` + `sources`

@@ -138,6 +138,7 @@ supersedes the 2026-08-03 dual-mode gate).
 |---|---|
 | `AGENTS.md` | Project charter and naming contract |
 | `SKILL.md` | Agent-facing skill definition (source of truth) |
+| `CHANGELOG.md` | Human-facing release log |
 | `docs/INSTALL.md` | Install, verify, upgrade, uninstall |
 | `docs/ARCHITECTURE.md` | Single shell layer and data flow |
 | `docs/CLASSIFICATION.md` | Domain, heat, and memory kinds |

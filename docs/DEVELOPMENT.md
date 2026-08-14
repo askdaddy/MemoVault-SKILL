@@ -119,3 +119,7 @@ uses an isolated temp directory.
 - `VERSION` holds `MAJOR.MINOR.PATCH`.
 - Breaking changes to the agent contract (subcommand names, frontmatter shape)
   bump MINOR at minimum and are recorded in `docs/RIPER.md`.
+- Every agent change in this repository updates `CHANGELOG.md` in the same
+  Execute (see `AGENTS.md` section 5). Use `[Unreleased]` unless `VERSION`
+  also bumps, in which case add `## [x.y.z] - YYYY-MM-DD`. RIPER stays the
+  process record; it does not replace the changelog.

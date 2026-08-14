@@ -128,6 +128,7 @@ Agent 编排 skill：`skills/testing-memovault/SKILL.md`
 |---|---|
 | `AGENTS.md` | 项目章程与命名合同 |
 | `SKILL.md` | 面向 agent 的 skill 定义（唯一真源） |
+| `CHANGELOG.md` | 面向人的版本发布记录 |
 | `docs/INSTALL.md` | 安装、校验、升级、卸载 |
 | `docs/ARCHITECTURE.md` | 单 shell 分层与数据流 |
 | `docs/CLASSIFICATION.md` | 领域、热度与 memory kinds |

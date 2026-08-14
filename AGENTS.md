@@ -47,6 +47,7 @@ Hard constraints:
 AGENTS.md              entry point (this file)
 CLAUDE.md              pointer to AGENTS.md for Claude Code
 README.md              human overview
+CHANGELOG.md           human-facing release log (Keep a Changelog)
 SKILL.md               canonical skill definition (source of truth, gets installed)
 docs/
   ARCHITECTURE.md      single shell layer, data flow, ledger/health
@@ -116,13 +117,21 @@ workflow defined in `docs/RIPER.md`. Summary:
 3. **Plan** - produce a concrete spec: files, names, behavior. Get explicit
    user approval before writing.
 4. **Execute** - implement exactly the approved plan. Do not expand scope.
-5. **Review** - verify the change against the plan and the naming contract.
+5. **Review** - verify the change against the plan, the naming contract, and
+   `CHANGELOG.md`.
 
 Rules:
 - In Research/Innovate/Plan you may only READ. Ask the user when uncertain; do
   not decide open questions autonomously.
 - Do not skip Plan approval. Execution without an approved plan is a violation.
 - Respect the naming contract in section 2 and the no-emoji constraint.
+- Every change an agent writes in this repository MUST be recorded in
+  `CHANGELOG.md` in the same Execute. Put user-facing notes under
+  `[Unreleased]` (Added / Changed / Deprecated / Removed / Fixed / Security).
+  If the change also bumps `VERSION`, move those notes into `## [x.y.z] -
+  YYYY-MM-DD` in that same change. `docs/RIPER.md` is the process record; it
+  does not replace the changelog. Review is incomplete if `CHANGELOG.md` was
+  not updated.
 
 ## 6. Conventions
 
@@ -142,4 +151,5 @@ Rules:
 - Extending the skill: `docs/DEVELOPMENT.md`
 - Install guide: `docs/INSTALL.md`
 - Process record and spec history: `docs/RIPER.md`
+- Release log (mandatory for every agent change): `CHANGELOG.md`
 - Approved specs and plans: `docs/superpowers/`

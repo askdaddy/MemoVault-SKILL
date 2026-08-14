@@ -1033,4 +1033,24 @@ mode so distill provenance closes the loop.
 ### Review
 - 对照：命名合同未改；0.7.2 规格行为未改；文档不再声称「所有子命令都在 fs.sh」。
 
+## 19. Entry: 增加 CHANGELOG.md（2026-08-14）
+
+### Research
+- 仓库有 `VERSION` 与 `docs/RIPER.md`，没有面向人的发布记录。用户要求在项目里维护 changelog。
+
+### Innovate
+- A 根目录 `CHANGELOG.md`（Keep a Changelog）/ B `docs/CHANGELOG.md`。选 A：与
+  `README.md` / `LICENSE` 并列，是常见发布入口。RIPER 仍作过程记录。
+
+### Plan
+- 用户明确要求生成该文档。
+
+### Execute
+- 新增 `CHANGELOG.md`（0.1.0–0.7.2，据 RIPER 与 git 历史）。
+- `AGENTS.md` 布局、`README.md` / `README_CN.md` 文档表、`DEVELOPMENT.md` 版本约定。
+
+### Review
+- 无 helper 行为变更。
+
+
 

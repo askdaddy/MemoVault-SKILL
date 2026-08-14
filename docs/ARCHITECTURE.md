@@ -31,6 +31,8 @@ Non goals (this version):
           +---------------v---------------+
           |  scripts/memovault.sh         |  dispatch + preflight
           |  scripts/lib/classify.sh      |  domain/heat/MOC
+          |  scripts/lib/obs.sh           |  ledger / health / suggest
+          |  scripts/lib/eval.sh          |  recall hit@k fixture
           +---------------+---------------+
                           |
           +---------------v---------------+
@@ -39,8 +41,9 @@ Non goals (this version):
           +---------------+---------------+
                           |
                           v
-          writes: $AGENT_MEMO_VAULT/**/*.md
-          (the same files humans may browse in Obsidian)
+          writes: $AGENT_MEMO_VAULT/brain/**/*.md
+                  $AGENT_MEMO_VAULT/.memovault/ledger.log
+          (the same notes humans may browse in Obsidian)
 ```
 
 There is one runtime layer. The helper never probes for the `obsidian` binary,
@@ -76,8 +79,8 @@ source=/Users/me/.agents/skills/memovault
 ```
 
 `runtime=shell` is the authoritative field. `mode=fs` and `forced=0` are
-transitional fields kept for one minor version so older agent stubs that parse
-the legacy `mode=...` line do not break; they may be removed in a future minor
+transitional fields kept so older agent stubs that parse the legacy `mode=...`
+line do not break. They remain in 0.7.x and may be removed in a future minor
 version. `search` is `rg` if `command -v rg` succeeds, otherwise `grep`. There is
 no `bin=` or `app=` field anymore: the helper does not locate or probe Obsidian.
 
@@ -87,20 +90,22 @@ upgrade)` line to stderr.
 
 ## 5. Operation mapping
 
-Every subcommand is implemented in `scripts/lib/fs.sh` (with `lib/rewrite.sh`
-for `rename`, `lib/obs.sh` for ledger/health/suggest, and `lib/eval.sh` for
-`eval`). There is no second column
-anymore; the table is single-track.
+Dispatch is the `main()` case in `scripts/memovault.sh`. Vault CRUD and
+graph/search live in `scripts/lib/fs.sh`, `rename` in `lib/rewrite.sh`,
+ledger/health/suggest in `lib/obs.sh`, and `eval` in `lib/eval.sh`. There is
+no second runtime column; the table is single-track.
 
 | Subcommand | Implementation |
 |---|---|
+| `preflight` | print `runtime=shell` line + source; optional update hint |
+| `upgrade` | exec `install.sh --upgrade` (newest complete tree) |
 | `new` | heredoc write with frontmatter under `brain/<domain>/` |
 | `append` | `cat >>` after the last line |
 | `prepend` | insert after frontmatter via awk |
 | `read` | `cat` |
 | `distill` | `new` atom/scenario + `sources` + raw pointer |
 | `daily` / `daily:append` | legacy `daily/YYYY-MM-DD.md` (not agent L0) |
-| `search` | `rg`/`grep` under `brain/`; filters; ledger `event=search` on the public subcommand only |
+| `search` | `rg`/`grep` under `brain/`; excludes `kind:raw` and superseded by default; ledger `event=search` on the public subcommand only (`dedupe` internal retrieval is not logged) |
 | `recall` | FTS candidates + optional one-hop neighbors; RRF + heat/kind ranking |
 | `cite` / `feedback` | append ledger events |
 | `dedupe` | title-normalization near-duplicate candidates |
@@ -141,8 +146,8 @@ internal retrieval is not logged), `read`, `capture`, `cite`, `feedback`,
 4. Agent runs `append "<Title>" "<body>"` with `[[wikilinks]]`.
 5. Optionally `promote` later.
 
-All four steps go through `lib/fs.sh`. The resulting file is plain markdown
-that humans can also open in Obsidian.
+Capture writes go through `lib/fs.sh` (and log `event=capture` via `lib/obs.sh`).
+The resulting file is plain markdown that humans can also open in Obsidian.
 
 ## 7. Failure handling
 

@@ -40,6 +40,7 @@ L0–L2 代理指标用于自评。
 - **多 Agent 安装：** Claude、Cursor、Codex、Gemini、Cline、Copilot 等
 
 向量 / 语义搜索刻意延后，见 `docs/DEVELOPMENT.md`。
+
 ## 环境要求
 
 - Bash（兼容 macOS 自带的 3.2）
@@ -104,7 +105,9 @@ Agent 侧契约以 `SKILL.md` 为准。
 2. **先提议再写入**：沉淀可复用知识；用户明确说「记一下 / remember this」则立即写
 3. **蒸馏**：`distill` 或手写把 inbox/raw 提炼为 `atom` / `scenario`，带 `sources` 与 `[[raw-title]]`
 4. **Skill SOP**：`brain/skills/` + `--kind skill`（体例见协议；vault templates 可选）
-5. **健康度**：适时 `health`，按指标建议 distill/promote/补链（不静默改库）
+5. **健康度**：适时 `health`。优先响应 `low_recall_hit_rate` /
+   `capture_after_miss` / `high_kind_other`；`cite_rate` 已 deprecated。
+   不静默改库。已安装 adapter 需 `upgrade` 后才会吃到新协议话术。
 
 ## 测试
 

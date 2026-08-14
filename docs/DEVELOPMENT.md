@@ -14,23 +14,26 @@ no-emoji rule.
 
 - `SKILL.md` is the single source of truth for the agent contract. Installed
   copies are pointer stubs.
-- `scripts/memovault.sh` + `scripts/lib/*.sh` implement the behavior.
-- `install/install.sh` + `install/targets.sh` + `install/adapters/*.md` handle
-  per agent installation.
-- `templates/` are Obsidian Templates files used by `create template=`.
-- `docs/` are specs for humans and deeper agent context.
+- `scripts/memovault.sh` dispatches; `scripts/lib/fs.sh`, `rewrite.sh`,
+  `classify.sh`, `obs.sh`, and `eval.sh` implement behavior.
+- `install/install.sh` + `install/targets.sh` + `install/lib/resolve.sh` +
+  `install/adapters/*.md` handle per agent installation and upgrade.
+- `templates/` are optional Obsidian Templates files for humans; they are not
+  the agent write source.
+- `docs/` are specs for humans and deeper agent context. Approved change specs
+  live under `docs/superpowers/`.
 
 ## 3. Adding a subcommand
 
-1. Add the dispatch branch in `scripts/memovault.sh` (`mm_dispatch`).
-2. Implement the behavior in `scripts/lib/fs.sh` (single shell runtime; there is
-   no cli layer anymore). If it touches wikilink rewriting, add a helper in
-   `scripts/lib/rewrite.sh`.
+1. Add the dispatch branch in `scripts/memovault.sh` (`main()` `case`).
+2. Implement vault I/O in `scripts/lib/fs.sh`. Wikilink rewriting goes in
+   `scripts/lib/rewrite.sh`. Ledger / health / suggest go in `lib/obs.sh`.
+   Recall fixture eval goes in `lib/eval.sh`.
 3. If it touches classification, add a helper in `scripts/lib/classify.sh`.
-4. Document it in `SKILL.md` (section 5) and the mapping table in
+4. Document it in `SKILL.md` (Commands) and the mapping table in
    `docs/ARCHITECTURE.md` (section 5).
-5. Keep the path resolver (`mm_vault_path`) in front of every write so nothing
-   escapes `$AGENT_MEMO_VAULT`.
+5. Keep writes under `$MM_VAULT`: `mmfs_locate` / `mmfs_note_path` resolve
+   inside the vault; `mmfs_has_dotdot` rejects `..` traversal.
 
 Conventions:
 - `set -uo pipefail`. Quote variables. Never `set -e` inside the helper.
@@ -91,23 +94,25 @@ Constraints to honor when built:
 - Keep full text `search`, `tags`, and `backlinks` as the always-available path.
 - Respect the no-emoji and never-write-outside-vault rules.
 
-## 6. 测试
+## 6. Testing
 
-端到端验收（官方门禁：单阶段 shell；不再需要 Obsidian）：
+End-to-end acceptance (official gate: single shell phase; Obsidian not required):
 
-1. 设计规格：`docs/superpowers/specs/2026-08-04-shell-only-runtime-design.md`（§8 取代
-   2026-08-03 的双模式门禁；旧规格 `2026-08-03-e2e-testing-design.md` 保留作历史）
-2. 机械入口：`./scripts/e2e/run.sh`（`--keep` 留给 protocol 跟测；`--fs-only` 为兼容
-   no-op；`--cli-only` 已移除）
-3. Agent 编排：`skills/testing-memovault/SKILL.md`
+1. Design: `docs/superpowers/specs/2026-08-04-shell-only-runtime-design.md`
+   (section 8 supersedes the 2026-08-03 dual-mode gate; the older spec is
+   historical).
+2. Mechanical entry: `./scripts/e2e/run.sh` (`--keep` for protocol follow-up;
+   `--fs-only` is a compat no-op; `--cli-only` is removed).
+3. Agent orchestration: `skills/testing-memovault/SKILL.md`
 
-快速语法检查仍可用：
+Quick syntax check:
 
 ```bash
 bash -n scripts/memovault.sh scripts/lib/*.sh install/install.sh
 ```
 
-注意：不要对生产 vault `~/.agent-memo-vault` 跑 e2e；harness 使用隔离临时目录。
+Do not run e2e against the production vault `~/.agent-memo-vault`; the harness
+uses an isolated temp directory.
 
 ## 7. Versioning
 

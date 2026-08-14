@@ -114,7 +114,10 @@ Injected adapters tell agents to:
 3. **Distill** inbox/raw into `atom` / `scenario` via `distill` (or `sources` +
    `[[raw-title]]`)
 4. **Skill SOPs** under `brain/skills/` with `--kind skill`
-5. **Health** via `health` when memory looks stale or the user asks
+5. **Health** via `health` when memory looks stale or the user asks. Prefer
+   hints `low_recall_hit_rate` / `capture_after_miss` / `high_kind_other`.
+   `cite_rate` is deprecated. Confirm before any rewrite. Installed adapters
+   pick up this text only after `upgrade`.
 
 ## Testing
 

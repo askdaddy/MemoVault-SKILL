@@ -64,8 +64,8 @@ runtime=shell mode=fs vault=<path> search=rg forced=0
 ```
 
 `runtime=shell` is the authoritative field. `mode=fs` and `forced=0` are
-transitional fields kept for one minor version so older agent stubs that parse
-the legacy `mode=...` line do not break; they may be removed in a future minor
+transitional fields kept so older agent stubs that parse the legacy `mode=...`
+line do not break. They remain in 0.7.x and may be removed in a future minor
 version. There is no `cli` mode, no `obsidian` binary probe, and no GUI launch.
 
 The helper always uses the same shell/filesystem implementation, so behavior is

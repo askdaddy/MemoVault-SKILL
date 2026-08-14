@@ -1005,3 +1005,32 @@ mode so distill provenance closes the loop.
 ### Review
 - `./scripts/e2e/run.sh`：pass=114 fail=0
 
+## 18. Entry: 文档对齐 0.7.2 现状（2026-08-14）
+
+### Research
+- 仓库 `VERSION` 已是 `0.7.2`；helper 与 e2e 实现匹配
+  `docs/superpowers/specs/2026-08-12-observability-metrics-hints-design.md`。
+- 已安装 skill 仍为 `0.7.1`（`preflight` 提示 upgrade）；Cursor rules 仍是旧 Health 段。
+- 章程/架构/分类/开发指南相对 0.6–0.7 实现滞后：缺 `obs.sh`/`eval.sh`/`upgrade`、
+  `search` 行丢掉 raw/superseded 默认过滤、CLASSIFICATION 仍把 `templates/skill.md`
+  当 agent 真源并暗示不存在的 `merge` 子命令、`DEVELOPMENT.md` 仍写 `mm_dispatch` /
+  `mm_vault_path`。
+
+### Innovate
+- 只改文档对齐现网，不 bump 版本、不改 helper。安装侧滞后用 `upgrade` 解决，不手改
+  `~/.cursor/rules`。
+
+### Plan
+- 用户本轮明确要求更新相关文档；范围 = 章程与 docs 对齐 0.7.2 实现。
+
+### Execute
+- `AGENTS.md`：布局、`upgrade` 表面、health 优先字段、preflight 过渡字段措辞。
+- `docs/ARCHITECTURE.md`：分层图含 obs/eval/ledger；search 默认过滤；capture 写路径。
+- `docs/CLASSIFICATION.md`：`.memovault/`；skill 体例；`suggest` 信号；`dedupe`。
+- `docs/DEVELOPMENT.md`：真实函数名；测试节改为英文。
+- `README.md` / `README_CN.md` / `SKILL.md`：Health 协议与过渡字段说明。
+
+### Review
+- 对照：命名合同未改；0.7.2 规格行为未改；文档不再声称「所有子命令都在 fs.sh」。
+
+

@@ -49,20 +49,24 @@ CLAUDE.md              pointer to AGENTS.md for Claude Code
 README.md              human overview
 SKILL.md               canonical skill definition (source of truth, gets installed)
 docs/
-  ARCHITECTURE.md      single shell layer, data flow
+  ARCHITECTURE.md      single shell layer, data flow, ledger/health
   CLASSIFICATION.md    domain + heat classification scheme
   CLI-REFERENCE.md     optional Obsidian CLI reference (humans; not a runtime dependency)
   DEVELOPMENT.md       how to extend: adapters, phases, vector search slot
   RIPER.md             SDD-RIPER process record (spec + decisions)
   INSTALL.md           per agent install guide
+  superpowers/         approved specs and implementation plans
 scripts/
   memovault.sh         entry: preflight + subcommand dispatch
-  lib/fs.sh            pure filesystem runtime (heredoc, rg/grep, awk)
+  lib/fs.sh            vault markdown runtime (heredoc, rg/grep, awk)
   lib/rewrite.sh       [[wikilink]] rewriter used by rename
   lib/classify.sh      domain/heat/MOC helpers
+  lib/obs.sh           ledger, cite, feedback, suggest, health
+  lib/eval.sh          recall hit@k fixture gate
 install/
-  install.sh           installer: --agent <x> | --all | --register-vault
+  install.sh           installer: --agent <x> | --all | --register-vault | --upgrade
   targets.sh           agent -> {path, adapter, kind} mapping
+  lib/resolve.sh       upgrade tree picker (newest complete VERSION)
   adapters/<agent>.md  per agent injection stub templates
 templates/
   note.md daily.md moc.md skill.md
@@ -72,17 +76,23 @@ VERSION
 ## 4. How the skill works (summary)
 
 The helper `scripts/memovault.sh` exposes subcommands to the agent. There is a
-single shell/filesystem runtime: every subcommand reads and writes markdown
-directly under `$AGENT_MEMO_VAULT` via `scripts/lib/fs.sh`. `rename` rewrites
-`[[wikilinks]]` across the vault via `scripts/lib/rewrite.sh`. There is no
-`cli` mode, no Obsidian binary probe, and no GUI launch. `MM_FORCE_FS` is
-accepted for backward compatibility but ignored (the runtime is always shell).
+single shell/filesystem runtime: vault reads and writes go through
+`scripts/lib/fs.sh`; `rename` rewrites `[[wikilinks]]` via `scripts/lib/rewrite.sh`;
+ledger / `health` / `suggest` live in `scripts/lib/obs.sh`. There is no `cli`
+mode, no Obsidian binary probe, and no GUI launch. `MM_FORCE_FS` is accepted
+for backward compatibility but ignored (the runtime is always shell).
 
-Full surface: `preflight`, `new`, `append`, `prepend`, `read`, `distill`,
-`daily`, `search`, `recall`, `cite`, `feedback`, `dedupe`, `suggest`, `tags`,
-`by-tag`, `backlinks`, `links`, `orphans`, `unresolved`, `move`, `rename`,
-`promote`, `supersede`, `moc`, `by-heat`, `health`, `stats`, `eval`,
+Full surface: `preflight`, `upgrade`, `new`, `append`, `prepend`, `read`,
+`distill`, `daily`, `search`, `recall`, `cite`, `feedback`, `dedupe`, `suggest`,
+`tags`, `by-tag`, `backlinks`, `links`, `orphans`, `unresolved`, `move`,
+`rename`, `promote`, `supersede`, `moc`, `by-heat`, `health`, `stats`, `eval`,
 `ledger:rotate`.
+
+`health` prints L0 vault counts plus L1/L2 ledger proxies. Prefer
+`recall_hit_rate`, `cite_7d`, `recapture_new_dup`, `kind_other_pct`, and the
+hints `low_recall_hit_rate` / `capture_after_miss` / `high_kind_other`.
+`cite_rate` and `recapture_dup` remain with their original formulas (deprecated).
+Installed agents pick up protocol text from `_protocol.md` only after `upgrade`.
 
 `preflight` prints a single machine readable line:
 
@@ -90,9 +100,9 @@ Full surface: `preflight`, `new`, `append`, `prepend`, `read`, `distill`,
 runtime=shell mode=fs vault=<path> search=rg|grep forced=0
 ```
 
-`mode=fs` and `forced=0` are transitional fields kept for one minor version so
-older agent stubs that parse the legacy line do not break; `runtime=shell` is
-the authoritative field. They may be removed in a future minor version.
+`mode=fs` and `forced=0` are transitional fields kept so older agent stubs that
+parse the legacy line do not break; `runtime=shell` is the authoritative field.
+They remain in 0.7.x and may be removed in a future minor version.
 
 See `SKILL.md` for the agent facing contract and `docs/ARCHITECTURE.md` for internals.
 
@@ -132,3 +142,4 @@ Rules:
 - Extending the skill: `docs/DEVELOPMENT.md`
 - Install guide: `docs/INSTALL.md`
 - Process record and spec history: `docs/RIPER.md`
+- Approved specs and plans: `docs/superpowers/`

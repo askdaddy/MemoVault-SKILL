@@ -207,17 +207,48 @@ mm_obs_days_ago() {
   date -u +%Y-%m-%d
 }
 
-# Extract key=value from a ledger line.
 # Extract key=value from a ledger line. Value may contain spaces; ends at
 # the next " key=" token (key = [a-z][a-z0-9_]*) or EOL.
+# Check start-of-line first: padding the line with a space makes *" ts="*
+# match the first field, but ${line#*" ts="} then fails to strip it.
 mm_obs_field() {
   local line="$1" key="$2" rest
-  case " $line" in
-    *" $key="*) rest="${line#*" $key="}" ;;
+  case "$line" in
     "$key="*) rest="${line#"$key="}" ;;
+    *" $key="*) rest="${line#*" $key="}" ;;
     *) printf ''; return 0 ;;
   esac
   printf '%s' "$rest" | sed -E 's/ [a-z][a-z0-9_]*=.*//'
+}
+
+# Epoch seconds for ledger ts= (ISO UTC). 0 if unparseable.
+mm_obs_ts_epoch() {
+  local ts="$1"
+  if date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s >/dev/null 2>&1; then
+    date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s
+    return
+  fi
+  if date -u -d "$ts" +%s >/dev/null 2>&1; then
+    date -u -d "$ts" +%s
+    return
+  fi
+  printf '0'
+}
+
+# Return 0 if title and query share a token of length >= 2.
+# Underscores in ledger q= count as spaces.
+mm_obs_tokens_overlap() {
+  local a="$1" b="$2" tok needle
+  a="$(printf '%s' "$a" | tr '_' ' ' | tr '[:upper:]' '[:lower:]')"
+  b="$(printf '%s' "$b" | tr '_' ' ' | tr '[:upper:]' '[:lower:]')"
+  needle=" $b "
+  for tok in $a; do
+    [ "${#tok}" -ge 2 ] || continue
+    case "$needle" in
+      *" $tok "*) return 0 ;;
+    esac
+  done
+  return 1
 }
 
 # Return 0 if note has provenance (non-empty sources or body [[wikilink]]).
@@ -234,11 +265,33 @@ mm_obs_note_has_provenance() {
   return 1
 }
 
+mm_obs_snap_path() { printf '%s/health-snap.log' "$(mm_obs_dir)"; }
+
+# Integer percent, or -1 when den is 0.
+mm_obs_pct() {
+  local num="${1:-0}" den="${2:-0}"
+  if [ "$den" -eq 0 ] 2>/dev/null; then
+    printf '%s' '-1'
+    return
+  fi
+  printf '%s' $((num * 100 / den))
+}
+
+# For summary=: show "-" when a rate is unknown (-1).
+mm_obs_dash_neg() {
+  local v="$1"
+  if [ "$v" = "-1" ]; then
+    printf '-'
+  else
+    printf '%s' "$v"
+  fi
+}
+
 mm_obs_health() {
   mmfs_ensure_vault
   local notes_total=0 kind_atom=0 kind_raw=0 kind_scenario=0 kind_persona=0 kind_skill=0 kind_other=0
   local heat_seedling=0 heat_growing=0 heat_evergreen=0
-  local inbox_raw_count=0 legacy_daily_count=0 superseded_count=0
+  local inbox_raw_count=0 legacy_daily_count=0 superseded_count=0 moc_count=0
   local orphan_count=0 orphan_pct=0
   local structured=0 with_prov=0 provenance_pct=-1
   local f rel k h title dom dom_key st
@@ -256,6 +309,7 @@ mm_obs_health() {
       dom="$(mmfs_get_prop "$f" domain)"
       st="$(mmfs_get_prop "$f" status)"
       [ "$st" = superseded ] && superseded_count=$((superseded_count + 1))
+      mmfs_is_moc "$f" && moc_count=$((moc_count + 1))
       [ -n "$h" ] || h="seedling"
       case "$k" in
         atom) kind_atom=$((kind_atom + 1)) ;;
@@ -316,16 +370,27 @@ EOF
     orphan_pct=$((orphan_count * 100 / notes_total))
   fi
 
-  local since recall_7d=0 capture_7d=0 cite_7d=0 promote_7d=0
+  local since since7 since14 recall_7d=0 capture_7d=0 cite_7d=0 promote_7d=0
   local recall_hits_7d=0 capture_without_recall_7d=0
   local skill_reuse=0 recapture_dup=0 cite_rate=-1 promote_rate=-1
   local search_7d=0 capture_after_miss_7d=0 recapture_new_dup=0
-  local recall_hit_rate=-1 kind_other_pct=-1
-  local miss_days="" cap_days="" op
+  local recall_hit_rate=-1 kind_other_pct=-1 wide_query_7d=0
+  local read_7d=0 feedback_7d=0 distill_7d=0 use_rate=-1 hit_unused_7d=0 read_uncited_7d=0
+  local recall_n1_7d=0 recall_n1_hits_7d=0 recall_n1_hit_rate=-1
+  local recall_n23_7d=0 recall_n23_hits_7d=0 recall_n23_hit_rate=-1
+  local recall_n4_7d=0 recall_n4_hits_7d=0 recall_n4_hit_rate=-1
+  local recall_nunk_7d=0
+  local recall_7d_prev=0 recall_hits_7d_prev=0 recall_hit_rate_prev7d=-1
+  local cite_7d_prev=0 wide_query_7d_prev=0
+  local op ts_full ts_ep token_n cap_ep cap_title miss_ep miss_q delta cap_ts miss_ts
   local titles_new_seen="" dup_new_titles=""
   local p line ev ts_day hits title_n titles_seen="" dup_titles=""
-  local ledger_ok=1
-  since="$(mm_obs_days_ago 7)"
+  local ledger_ok=1 miss_tmp="" cap_tmp="" cite_tmp="" read_tmp=""
+  local in_cur in_prev ev_title found rt ct snap last_snap oldv snap_tmp snap_n curv
+  local hr_s n1_s n4_s ur_s
+  since7="$(mm_obs_days_ago 7)"
+  since14="$(mm_obs_days_ago 14)"
+  since="$since7"
   p="$(mm_obs_ledger_path)"
   if [ -f "$p" ]; then
     if ! [ -r "$p" ]; then
@@ -334,22 +399,56 @@ EOF
     fi
   fi
   if [ "$ledger_ok" = 1 ] && [ -f "$p" ]; then
+    miss_tmp="$(mktemp)"
+    cap_tmp="$(mktemp)"
+    cite_tmp="$(mktemp)"
+    read_tmp="$(mktemp)"
     while IFS= read -r line || [ -n "$line" ]; do
       [ -n "$line" ] || continue
-      ts_day="$(mm_obs_field "$line" ts | cut -c1-10)"
+      ts_full="$(mm_obs_field "$line" ts)"
+      ts_day="$(printf '%s' "$ts_full" | cut -c1-10)"
       [ -n "$ts_day" ] || continue
-      [ "$ts_day" \< "$since" ] && continue
+      [ "$ts_day" \< "$since14" ] && continue
+      in_cur=0
+      in_prev=0
+      if [ ! "$ts_day" \< "$since7" ]; then
+        in_cur=1
+      else
+        in_prev=1
+      fi
+      ts_ep="$(mm_obs_ts_epoch "$ts_full")"
       ev="$(mm_obs_field "$line" event)"
       case "$ev" in
         recall)
-          recall_7d=$((recall_7d + 1))
           hits="$(mm_obs_field "$line" hits)"
-          [ "${hits:-0}" -gt 0 ] 2>/dev/null && recall_hits_7d=$((recall_hits_7d + 1))
-          if [ "${hits:-0}" -eq 0 ] 2>/dev/null; then
-            miss_days="${miss_days}|$ts_day|"
+          token_n="$(mm_obs_field "$line" token_n)"
+          if [ "$in_cur" = 1 ]; then
+            recall_7d=$((recall_7d + 1))
+            [ "${hits:-0}" -gt 0 ] 2>/dev/null && recall_hits_7d=$((recall_hits_7d + 1))
+            [ "${token_n:-0}" -ge 4 ] 2>/dev/null && wide_query_7d=$((wide_query_7d + 1))
+            if [ "${token_n:-0}" -eq 1 ] 2>/dev/null; then
+              recall_n1_7d=$((recall_n1_7d + 1))
+              [ "${hits:-0}" -gt 0 ] 2>/dev/null && recall_n1_hits_7d=$((recall_n1_hits_7d + 1))
+            elif [ "${token_n:-0}" -eq 2 ] 2>/dev/null || [ "${token_n:-0}" -eq 3 ] 2>/dev/null; then
+              recall_n23_7d=$((recall_n23_7d + 1))
+              [ "${hits:-0}" -gt 0 ] 2>/dev/null && recall_n23_hits_7d=$((recall_n23_hits_7d + 1))
+            elif [ "${token_n:-0}" -ge 4 ] 2>/dev/null; then
+              recall_n4_7d=$((recall_n4_7d + 1))
+              [ "${hits:-0}" -gt 0 ] 2>/dev/null && recall_n4_hits_7d=$((recall_n4_hits_7d + 1))
+            else
+              recall_nunk_7d=$((recall_nunk_7d + 1))
+            fi
+            if [ "${hits:-0}" -eq 0 ] 2>/dev/null; then
+              printf '%s\t%s\t%s\n' "$ts_ep" "$ts_full" "$(mm_obs_field "$line" q)" >> "$miss_tmp"
+            fi
+          else
+            recall_7d_prev=$((recall_7d_prev + 1))
+            [ "${hits:-0}" -gt 0 ] 2>/dev/null && recall_hits_7d_prev=$((recall_hits_7d_prev + 1))
+            [ "${token_n:-0}" -ge 4 ] 2>/dev/null && wide_query_7d_prev=$((wide_query_7d_prev + 1))
           fi
           ;;
         capture)
+          [ "$in_cur" = 1 ] || continue
           capture_7d=$((capture_7d + 1))
           title_n="$(mm_obs_norm_title "$(mm_obs_field "$line" title)")"
           if [ -n "$title_n" ]; then
@@ -363,7 +462,7 @@ EOF
               *) titles_seen="${titles_seen}|$title_n|" ;;
             esac
           fi
-          cap_days="${cap_days}${ts_day} "
+          printf '%s\t%s\t%s\n' "$ts_ep" "$ts_full" "$(mm_obs_field "$line" title)" >> "$cap_tmp"
           op="$(mm_obs_field "$line" op)"
           if [ "$op" = new ] && [ -n "$title_n" ]; then
             case "$titles_new_seen" in
@@ -377,18 +476,84 @@ EOF
             esac
           fi
           ;;
-        cite) cite_7d=$((cite_7d + 1)) ;;
-        promote) promote_7d=$((promote_7d + 1)) ;;
-        search) search_7d=$((search_7d + 1)) ;;
+        cite)
+          ev_title="$(mm_obs_field "$line" title)"
+          if [ "$in_cur" = 1 ]; then
+            cite_7d=$((cite_7d + 1))
+            [ -n "$ev_title" ] && printf '%s\n' "$ev_title" >> "$cite_tmp"
+          else
+            cite_7d_prev=$((cite_7d_prev + 1))
+          fi
+          ;;
+        promote)
+          [ "$in_cur" = 1 ] && promote_7d=$((promote_7d + 1))
+          ;;
+        search)
+          [ "$in_cur" = 1 ] && search_7d=$((search_7d + 1))
+          ;;
+        read)
+          if [ "$in_cur" = 1 ]; then
+            read_7d=$((read_7d + 1))
+            ev_title="$(mm_obs_field "$line" title)"
+            [ -n "$ev_title" ] && printf '%s\n' "$ev_title" >> "$read_tmp"
+          fi
+          ;;
+        feedback)
+          [ "$in_cur" = 1 ] && feedback_7d=$((feedback_7d + 1))
+          ;;
+        distill)
+          [ "$in_cur" = 1 ] && distill_7d=$((distill_7d + 1))
+          ;;
       esac
     done < "$p"
 
-    for d in $cap_days; do
-      [ -n "$d" ] || continue
-      case "$miss_days" in
-        *"|$d|"*) capture_after_miss_7d=$((capture_after_miss_7d + 1)) ;;
-      esac
-    done
+    if [ -s "$cap_tmp" ] && [ -s "$miss_tmp" ]; then
+      while IFS='	' read -r cap_ep cap_ts cap_title || [ -n "$cap_ep" ]; do
+        [ -n "$cap_ts" ] || continue
+        while IFS='	' read -r miss_ep miss_ts miss_q || [ -n "$miss_ep" ]; do
+          [ -n "$miss_ts" ] || continue
+          if [ "${cap_ts}" \< "${miss_ts}" ]; then
+            continue
+          fi
+          if [ "${cap_ep:-0}" -gt 0 ] 2>/dev/null && [ "${miss_ep:-0}" -gt 0 ] 2>/dev/null; then
+            delta=$((cap_ep - miss_ep))
+            if [ "$delta" -le 1800 ]; then
+              capture_after_miss_7d=$((capture_after_miss_7d + 1))
+              break
+            fi
+          fi
+          if mm_obs_tokens_overlap "$cap_title" "$miss_q"; then
+            if [ "${cap_ep:-0}" -le 0 ] 2>/dev/null || [ "${miss_ep:-0}" -le 0 ] 2>/dev/null; then
+              cap_day="$(printf '%s' "$cap_ts" | cut -c1-10)"
+              miss_day="$(printf '%s' "$miss_ts" | cut -c1-10)"
+              [ "$cap_day" = "$miss_day" ] || continue
+            fi
+            capture_after_miss_7d=$((capture_after_miss_7d + 1))
+            break
+          fi
+        done < "$miss_tmp"
+      done < "$cap_tmp"
+    fi
+    rm -f "$miss_tmp" "$cap_tmp"
+
+    read_uncited_7d=0
+    if [ -s "$read_tmp" ]; then
+      while IFS= read -r rt || [ -n "$rt" ]; do
+        [ -n "$rt" ] || continue
+        found=0
+        if [ -s "$cite_tmp" ]; then
+          while IFS= read -r ct || [ -n "$ct" ]; do
+            [ -n "$ct" ] || continue
+            if [ "$rt" = "$ct" ]; then
+              found=1
+              break
+            fi
+          done < "$cite_tmp"
+        fi
+        [ "$found" -eq 0 ] && read_uncited_7d=$((read_uncited_7d + 1))
+      done < "$read_tmp"
+    fi
+    rm -f "$cite_tmp" "$read_tmp"
 
     # skill_reuse: distinct skill titles with read|cite count >= 2 in window
     skill_reuse="$(awk -v since="$since" '
@@ -428,6 +593,16 @@ EOF
   fi
   if [ "$recall_7d" -gt 0 ]; then
     recall_hit_rate=$((recall_hits_7d * 100 / recall_7d))
+    use_rate=$((cite_7d * 100 / recall_7d))
+  fi
+  if [ "$recall_hits_7d" -gt "$cite_7d" ]; then
+    hit_unused_7d=$((recall_hits_7d - cite_7d))
+  fi
+  recall_n1_hit_rate="$(mm_obs_pct "$recall_n1_hits_7d" "$recall_n1_7d")"
+  recall_n23_hit_rate="$(mm_obs_pct "$recall_n23_hits_7d" "$recall_n23_7d")"
+  recall_n4_hit_rate="$(mm_obs_pct "$recall_n4_hits_7d" "$recall_n4_7d")"
+  if [ "$recall_7d_prev" -gt 0 ]; then
+    recall_hit_rate_prev7d=$((recall_hits_7d_prev * 100 / recall_7d_prev))
   fi
 
   printf 'notes_total=%s\n' "$notes_total"
@@ -467,6 +642,53 @@ EOF
   printf 'capture_after_miss_7d=%s\n' "$capture_after_miss_7d"
   printf 'cite_7d=%s\n' "$cite_7d"
   printf 'recapture_new_dup=%s\n' "$recapture_new_dup"
+  printf 'wide_query_7d=%s\n' "$wide_query_7d"
+  printf 'moc_count=%s\n' "$moc_count"
+  printf 'read_7d=%s\n' "$read_7d"
+  printf 'feedback_7d=%s\n' "$feedback_7d"
+  printf 'distill_7d=%s\n' "$distill_7d"
+  printf 'use_rate=%s\n' "$use_rate"
+  printf 'hit_unused_7d=%s\n' "$hit_unused_7d"
+  printf 'read_uncited_7d=%s\n' "$read_uncited_7d"
+  printf 'recall_n1_7d=%s\n' "$recall_n1_7d"
+  printf 'recall_n1_hits_7d=%s\n' "$recall_n1_hits_7d"
+  printf 'recall_n1_hit_rate=%s\n' "$recall_n1_hit_rate"
+  printf 'recall_n23_7d=%s\n' "$recall_n23_7d"
+  printf 'recall_n23_hits_7d=%s\n' "$recall_n23_hits_7d"
+  printf 'recall_n23_hit_rate=%s\n' "$recall_n23_hit_rate"
+  printf 'recall_n4_7d=%s\n' "$recall_n4_7d"
+  printf 'recall_n4_hits_7d=%s\n' "$recall_n4_hits_7d"
+  printf 'recall_n4_hit_rate=%s\n' "$recall_n4_hit_rate"
+  printf 'recall_nunk_7d=%s\n' "$recall_nunk_7d"
+  printf 'recall_7d_prev=%s\n' "$recall_7d_prev"
+  printf 'recall_hits_7d_prev=%s\n' "$recall_hits_7d_prev"
+  printf 'recall_hit_rate_prev7d=%s\n' "$recall_hit_rate_prev7d"
+  printf 'cite_7d_prev=%s\n' "$cite_7d_prev"
+  printf 'wide_query_7d_prev=%s\n' "$wide_query_7d_prev"
+
+  last_snap=""
+  snap="$(mm_obs_snap_path)"
+  if [ -f "$snap" ] && [ -r "$snap" ]; then
+    last_snap="$(tail -1 "$snap" 2>/dev/null || true)"
+  fi
+  if [ -n "$last_snap" ]; then
+    for k in notes_total recall_hit_rate recall_7d cite_7d read_7d use_rate orphan_pct kind_other_pct wide_query_7d capture_after_miss_7d skill_reuse moc_count; do
+      oldv="$(mm_obs_field "$last_snap" "$k")"
+      eval "curv=\$$k"
+      if [ -z "$oldv" ]; then
+        printf 'delta_%s=-\n' "$k"
+      else
+        printf 'delta_%s=%s\n' "$k" "$((curv - oldv))"
+      fi
+    done
+  fi
+
+  hr_s="$(mm_obs_dash_neg "$recall_hit_rate")"
+  n1_s="$(mm_obs_dash_neg "$recall_n1_hit_rate")"
+  n4_s="$(mm_obs_dash_neg "$recall_n4_hit_rate")"
+  ur_s="$(mm_obs_dash_neg "$use_rate")"
+  printf 'summary=hit_rate=%s n1=%s n4=%s use_rate=%s cite=%s read=%s uncited_read=%s orphan_pct=%s moc=%s\n' \
+    "$hr_s" "$n1_s" "$n4_s" "$ur_s" "$cite_7d" "$read_7d" "$read_uncited_7d" "$orphan_pct" "$moc_count"
 
   # Soft hints for agent self-check (not automatic vault mutations).
   if [ "$inbox_raw_count" -ge 3 ]; then
@@ -490,4 +712,35 @@ EOF
   if [ "$notes_total" -ge 10 ] && [ "$kind_other_pct" -ge 40 ]; then
     printf 'hint=high_kind_other\n'
   fi
+  if [ "$recall_7d" -ge 5 ] && [ "$wide_query_7d" -ge 5 ]; then
+    printf 'hint=wide_query\n'
+  fi
+  if [ "$recall_hits_7d" -ge 5 ] && [ "$cite_7d" -eq 0 ]; then
+    printf 'hint=low_use\n'
+  fi
+
+  # Snapshot last (vault-local). Failure must not fail health.
+  {
+    mkdir -p "$(mm_obs_dir)" 2>/dev/null || { mm_log "obs: cannot mkdir $(mm_obs_dir)"; false; }
+  } && {
+    snap="$(mm_obs_snap_path)"
+    printf 'ts=%s notes_total=%s recall_hit_rate=%s recall_7d=%s cite_7d=%s read_7d=%s use_rate=%s orphan_pct=%s kind_other_pct=%s wide_query_7d=%s capture_after_miss_7d=%s skill_reuse=%s moc_count=%s\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      "$notes_total" "$recall_hit_rate" "$recall_7d" "$cite_7d" "$read_7d" "$use_rate" \
+      "$orphan_pct" "$kind_other_pct" "$wide_query_7d" "$capture_after_miss_7d" \
+      "${skill_reuse:-0}" "$moc_count" >> "$snap" 2>/dev/null \
+      || mm_log "obs: cannot append health snap"
+    if [ -f "$snap" ]; then
+      snap_n="$(wc -l < "$snap" | tr -d ' ')"
+      if [ "${snap_n:-0}" -gt 200 ] 2>/dev/null; then
+        snap_tmp="$(mktemp)"
+        if tail -200 "$snap" > "$snap_tmp" 2>/dev/null && mv "$snap_tmp" "$snap" 2>/dev/null; then
+          :
+        else
+          rm -f "$snap_tmp"
+          mm_log "obs: cannot rotate health snap"
+        fi
+      fi
+    fi
+  }
 }

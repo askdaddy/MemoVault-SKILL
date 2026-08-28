@@ -12,4 +12,4 @@ updated: 2026-08-11
 
 # Eval Spoke
 
-Neighbor only via graph; no unique-eval-token here.
+Neighbor only via graph; this note has no hub fts marker.

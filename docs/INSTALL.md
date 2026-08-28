@@ -238,6 +238,10 @@ Or from a checkout:
 ```
 
 Notes:
+- **0.7.2 to 0.8.0 requires `upgrade`.** Until then the installed helper is still
+  phrase FTS and adapters still tell agents to dump "narrow keywords". Run
+  `memovault upgrade` (or `./install/install.sh --upgrade`) so agents pick up
+  token-OR recall, 1-3 token protocol, and MOC exclusion.
 - `preflight` hints when a newer full tree is available vs installed `VERSION`.
 - Version gate: newer upgrades; equal needs `--force`; older **refuses** unless
   `--force` (downgrade).

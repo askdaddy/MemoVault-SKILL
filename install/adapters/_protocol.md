@@ -9,13 +9,16 @@ You have a local knowledge vault. Use it proactively, not only when asked.
 ### 1. Recall - automatic, every task
 
 At the start of answering a user request, before you respond:
-- Run one `__MEMOVAULT_HELPER__ recall "<narrow keywords>"` (prefer `--limit 5`).
-  If recall is unavailable, fall back to `search` with the same keywords.
-- Helper already filters out `kind: raw` and ranks by heat/kind. Prefer the top
-  hits; `read` at most 3 notes per task (usually 1).
+- Run one `__MEMOVAULT_HELPER__ recall "<1-3 distinctive tokens>"` (prefer `--limit 5`).
+  Do not dump 4+ keywords. If recall is unavailable, fall back to `search`.
+  Helper token-ORs the words; they need not be a consecutive phrase.
+- Helper already filters out `kind: raw` and domain MOC indexes (`_*-MOC.md`).
+  It ranks by token overlap, then heat/kind. Prefer the top hits; `read` at
+  most 3 notes per task (usually 1). Use `search` or `moc <domain>` for maps.
 - When a note materially affects your answer, run
   `__MEMOVAULT_HELPER__ cite "<title>"` and mention the note briefly.
-- If the vault is empty or nothing matches, skip silently. Do not narrate
+- If the first recall misses, retry once with the shortest distinctive token,
+  then `search`. If still nothing, skip silently. Do not narrate
   "nothing found".
 
 ### 2. Capture - semi-automatic, on durable knowledge
@@ -65,14 +68,21 @@ When the turn produced a reusable how-to:
 - Before creating, run `dedupe "<title>"` and prefer `append` on hits.
 - Heat: `seedling` -> `growing` -> `evergreen`. Run `suggest` or `health` and
   confirm before `promote`.
-- When the user asks about memory health, or inbox/raw is piling up, run
-  `__MEMOVAULT_HELPER__ health` / `suggest` and act on `hint=` / `suggest=`
+- When the user asks about memory health, efficacy, before/after, 效果, 对比,
+  or 观测, or inbox/raw is piling up, run
+  `__MEMOVAULT_HELPER__ health` / `suggest`. Read `summary=` first, then
+  `use_rate`, `recall_n*_hit_rate`, `delta_*`, and `hint=` / `suggest=`
   lines. Prefer new hints when present (confirm before any rewrite):
-  `low_recall_hit_rate` (narrow recall), `capture_after_miss` (search/dedupe
-  before capture), `high_kind_other` (add or fix `kind`). Treat
-  `hint=low_cite_rate` as legacy. Prefer `recall_hit_rate`, `recall_hits_7d`,
-  `cite_7d`, `recapture_new_dup`, `kind_other_pct`; `search_7d` is
-  informational. `cite_rate` and `recapture_dup` are deprecated. Do not
+  `low_recall_hit_rate` (narrow to 1-3 tokens), `wide_query` (cut 4+ token
+  queries), `low_use` (cite when a hit note actually affected the answer),
+  `capture_after_miss` (search/dedupe before capture; a ritual
+  start-of-turn miss is not a reason to create a note), `high_kind_other`
+  (add or fix `kind`). Treat
+  `hint=low_cite_rate` as legacy. Prefer `recall_hit_rate`, token-n hit
+  rates, `use_rate`, `cite_7d`, `read_7d`, `recall_hit_rate_prev7d`,
+  `delta_*`, `recapture_new_dup`, `kind_other_pct`, `wide_query_7d`,
+  `moc_count`. `search_7d` is informational. `heat_evergreen` includes MOC
+  indexes. `cite_rate` and `recapture_dup` are deprecated. Do not
   silently rewrite the vault.
 
 ### 6. Guardrails

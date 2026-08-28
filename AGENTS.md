@@ -89,9 +89,12 @@ Full surface: `preflight`, `upgrade`, `new`, `append`, `prepend`, `read`,
 `rename`, `promote`, `supersede`, `moc`, `by-heat`, `health`, `stats`, `eval`,
 `ledger:rotate`.
 
-`health` prints L0 vault counts plus L1/L2 ledger proxies. Prefer
-`recall_hit_rate`, `cite_7d`, `recapture_new_dup`, `kind_other_pct`, and the
-hints `low_recall_hit_rate` / `capture_after_miss` / `high_kind_other`.
+`health` prints L0 vault counts plus L1/L2 ledger proxies (inventory and
+efficacy). Prefer `summary=`, `recall_hit_rate`, token-n hit rates,
+`use_rate`, `cite_7d`, `read_7d`, `recall_hit_rate_prev7d`, `delta_*`,
+`recapture_new_dup`, `kind_other_pct`, `wide_query_7d`, `moc_count`, and the
+hints `low_recall_hit_rate` / `wide_query` / `low_use` / `capture_after_miss` /
+`high_kind_other`.
 `cite_rate` and `recapture_dup` remain with their original formulas (deprecated).
 Installed agents pick up protocol text from `_protocol.md` only after `upgrade`.
 

@@ -89,6 +89,7 @@ assert_contains "$hout" "recall_hit_rate=" "health prints recall_hit_rate ($E2E_
 assert_contains "$hout" "capture_after_miss_7d=" "health prints capture_after_miss_7d ($E2E_PHASE)"
 assert_contains "$hout" "cite_7d=" "health prints cite_7d ($E2E_PHASE)"
 assert_contains "$hout" "recapture_new_dup=" "health prints recapture_new_dup ($E2E_PHASE)"
+assert_contains "$hout" "wide_query_7d=" "health prints wide_query_7d ($E2E_PHASE)"
 assert_contains "$hout" "cite_rate=" "health still prints cite_rate ($E2E_PHASE)"
 assert_contains "$hout" "recapture_dup=" "health still prints recapture_dup ($E2E_PHASE)"
 
@@ -177,5 +178,92 @@ while [ "$j" -le 10 ]; do
 done
 hiso3="$(e2e_mm health 2>/dev/null || true)"
 assert_contains "$hiso3" "hint=high_kind_other" "hint high_kind_other with 10+ unkinded notes ($E2E_PHASE)"
+
+# --- 0.8.0: 7d window, token_n, capture_after_miss causality ---
+iso2="$E2E_ROOT/iso-obs-window"
+mkdir -p "$iso2/.memovault" "$iso2/brain/iso"
+E2E_VAULT="$iso2"
+printf '%s\n' "ts=2000-01-01T00:00:00Z event=recall q=ancient hits=1 top=Old" > "$iso2/.memovault/ledger.log"
+e2e_mm recall "NOWMISS_${E2E_STEM}" --limit 3 >/dev/null 2>&1 || true
+hw="$(e2e_mm health 2>/dev/null || true)"
+r7="$(printf '%s\n' "$hw" | awk -F= '/^recall_7d=/{print $2; exit}')"
+assert_eq "1" "$r7" "recall_7d ignores 2000-01-01 ledger row ($E2E_PHASE)"
+rh="$(printf '%s\n' "$hw" | awk -F= '/^recall_hits_7d=/{print $2; exit}')"
+assert_eq "0" "$rh" "ancient hits=1 does not count in 7d ($E2E_PHASE)"
+
+last_r="$(grep 'event=recall' "$iso2/.memovault/ledger.log" | tail -1)"
+assert_contains "$last_r" "token_n=" "recall ledger has token_n= ($E2E_PHASE)"
+
+today="$(date -u +%Y-%m-%d)"
+printf '%s\n' "ts=${today}T00:00:00Z event=recall q=unrelated_query hits=0 top= token_n=2" > "$iso2/.memovault/ledger.log"
+printf '%s\n' "ts=${today}T04:00:00Z event=capture title=Completely Different Title kind=atom domain=iso op=new" >> "$iso2/.memovault/ledger.log"
+hw2="$(e2e_mm health 2>/dev/null || true)"
+assert_contains "$hw2" "capture_after_miss_7d=0" "no overlap + 4h gap is not capture_after_miss ($E2E_PHASE)"
+
+printf '%s\n' "ts=${today}T00:00:00Z event=recall q=PERC_copyback hits=0 top= token_n=2" > "$iso2/.memovault/ledger.log"
+printf '%s\n' "ts=${today}T04:00:00Z event=capture title=PERC SOP kind=atom domain=iso op=new" >> "$iso2/.memovault/ledger.log"
+hw3="$(e2e_mm health 2>/dev/null || true)"
+cam="$(printf '%s\n' "$hw3" | awk -F= '/^capture_after_miss_7d=/{print $2; exit}')"
+case "$cam" in
+  0|-*) e2e_fail "title overlap still counts capture_after_miss ($E2E_PHASE)" "out=$hw3" ;;
+  *) e2e_pass "title overlap still counts capture_after_miss ($E2E_PHASE)" ;;
+esac
+
+iso3="$E2E_ROOT/iso-wide-query"
+mkdir -p "$iso3/.memovault" "$iso3/brain/iso"
+E2E_VAULT="$iso3"
+today="$(date -u +%Y-%m-%d)"
+{
+  i=1
+  while [ "$i" -le 5 ]; do
+    sec="$(printf '%02d' "$i")"
+    printf 'ts=%sT00:00:%sZ event=recall q=a_b_c_d hits=0 top= token_n=4\n' "$today" "$sec"
+    i=$((i + 1))
+  done
+} > "$iso3/.memovault/ledger.log"
+hwq="$(e2e_mm health 2>/dev/null || true)"
+assert_contains "$hwq" "wide_query_7d=5" "wide_query_7d counts token_n>=4 ($E2E_PHASE)"
+assert_contains "$hwq" "hint=wide_query" "hint=wide_query when recall_7d>=5 and wide_query_7d>=5 ($E2E_PHASE)"
+assert_contains "$hwq" "recall_n4_7d=5" "recall_n4_7d counts token_n>=4 ($E2E_PHASE)"
+assert_contains "$hwq" "read_7d=" "health prints read_7d ($E2E_PHASE)"
+assert_contains "$hwq" "use_rate=" "health prints use_rate ($E2E_PHASE)"
+assert_contains "$hwq" "moc_count=" "health prints moc_count ($E2E_PHASE)"
+assert_contains "$hwq" "summary=" "health prints summary= ($E2E_PHASE)"
+assert_contains "$hwq" "recall_hit_rate_prev7d=" "health prints recall_hit_rate_prev7d ($E2E_PHASE)"
+
+iso4="$E2E_ROOT/iso-efficacy"
+mkdir -p "$iso4/.memovault" "$iso4/brain/iso"
+E2E_VAULT="$iso4"
+today="$(date -u +%Y-%m-%d)"
+if date -u -v-10d +%Y-%m-%d >/dev/null 2>&1; then
+  prevd="$(date -u -v-10d +%Y-%m-%d)"
+else
+  prevd="$(date -u -d '10 days ago' +%Y-%m-%d)"
+fi
+{
+  printf 'ts=%sT00:00:00Z event=recall q=oldwide hits=0 top= token_n=4\n' "$prevd"
+  printf 'ts=%sT00:00:01Z event=recall q=oldwide hits=0 top= token_n=4\n' "$prevd"
+  i=1
+  while [ "$i" -le 5 ]; do
+    sec="$(printf '%02d' "$i")"
+    printf 'ts=%sT01:00:%sZ event=recall q=one hits=1 top=Leaf token_n=1\n' "$today" "$sec"
+    i=$((i + 1))
+  done
+  printf 'ts=%sT02:00:00Z event=read title=Leaf kind=atom\n' "$today"
+} > "$iso4/.memovault/ledger.log"
+printf 'ts=2000-01-01T00:00:00Z recall_hit_rate=10 cite_7d=9 orphan_pct=40\n' > "$iso4/.memovault/health-snap.log"
+hef="$(e2e_mm health 2>/dev/null || true)"
+assert_contains "$hef" "recall_n1_7d=5" "n1 bucket this week ($E2E_PHASE)"
+assert_contains "$hef" "recall_n1_hit_rate=100" "n1 hit rate 100 ($E2E_PHASE)"
+assert_contains "$hef" "hint=low_use" "hint=low_use when hits but no cite ($E2E_PHASE)"
+assert_contains "$hef" "read_7d=1" "read_7d counts ($E2E_PHASE)"
+assert_contains "$hef" "read_uncited_7d=1" "read without cite ($E2E_PHASE)"
+assert_contains "$hef" "use_rate=0" "use_rate 0 when cite_7d=0 ($E2E_PHASE)"
+rhp="$(printf '%s\n' "$hef" | awk -F= '/^recall_hit_rate_prev7d=/{print $2; exit}')"
+assert_eq "0" "$rhp" "prev window hit rate 0 ($E2E_PHASE)"
+wqprev="$(printf '%s\n' "$hef" | awk -F= '/^wide_query_7d_prev=/{print $2; exit}')"
+assert_eq "2" "$wqprev" "prev window wide_query ($E2E_PHASE)"
+dhit="$(printf '%s\n' "$hef" | awk -F= '/^delta_recall_hit_rate=/{print $2; exit}')"
+assert_eq "90" "$dhit" "delta_recall_hit_rate vs snap ($E2E_PHASE)"
 
 E2E_VAULT="$old_vault"

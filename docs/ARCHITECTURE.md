@@ -106,7 +106,7 @@ no second runtime column; the table is single-track.
 | `distill` | `new` atom/scenario + `sources` + raw pointer |
 | `daily` / `daily:append` | legacy `daily/YYYY-MM-DD.md` (not agent L0) |
 | `search` | `rg`/`grep` under `brain/`; excludes `kind:raw` and superseded by default; ledger `event=search` on the public subcommand only (`dedupe` internal retrieval is not logged) |
-| `recall` | FTS candidates + optional one-hop neighbors; RRF + heat/kind ranking |
+| `recall` | whitespace token-OR (`rg -F` per token), rank by token hits, then one-hop RRF + heat/kind; skips `_*-MOC.md` / `tags: [moc]` (search still finds maps) |
 | `cite` / `feedback` | append ledger events |
 | `dedupe` | title-normalization near-duplicate candidates |
 | `suggest` | promote/dedupe suggestions from ledger + light vault scan |
@@ -129,13 +129,21 @@ Events include `recall`, `search` (public `search` subcommand only; `dedupe`
 internal retrieval is not logged), `read`, `capture`, `cite`, `feedback`,
 `promote`, `distill`, `supersede`. `event=search` is independent of
 `event=recall` (0.6.0 optionally lumped them; 0.7.2 does not).
+`event=recall` lines include `token_n=` (0.8.0).
 
 `health` / `stats` print L0 vault counts plus L1/L2 ledger proxies. Added in
 0.7.2: `kind_other_pct`, `search_7d`, `recall_hits_7d`, `recall_hit_rate`,
 `capture_after_miss_7d`, `cite_7d`, `recapture_new_dup`, and hints
 `low_recall_hit_rate` / `capture_after_miss` / `high_kind_other`.
+0.8.0: `wide_query_7d` and `hint=wide_query`; `capture_after_miss_7d` requires
+an earlier miss plus title-token overlap or a 30-minute window (not same-UTC-day
+bagging); ledger `ts=` parsing no longer breaks the 7-day window.
+Also in 0.8.0: efficacy keys after `wide_query_7d` (`read_7d`, `use_rate`,
+token-n buckets, prev-window `*_prev` / `*_prev7d`, `moc_count`, `summary=`,
+`hint=low_use`) plus vault-local `.memovault/health-snap.log` and `delta_*`.
 `cite_rate` and `recapture_dup` remain with their original formulas
-(deprecated).
+(deprecated). `heat_evergreen` still includes MOC indexes; `moc_count` is the
+honest map count.
 
 ## 6. Data flow for a capture
 

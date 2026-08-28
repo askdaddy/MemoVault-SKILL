@@ -11,7 +11,7 @@ same vault in Obsidian for browsing.
 | | |
 |---|---|
 | Skill name | `memovault` |
-| Version | `0.7.2` (see `VERSION`) |
+| Version | `0.8.0` (see `VERSION`) |
 | Skill source (after install) | `~/.agents/skills/memovault/` |
 | Knowledge vault | `~/.agent-memo-vault/` |
 | Vault override | `AGENT_MEMO_VAULT` |
@@ -32,9 +32,9 @@ are optional.
 ## Features
 
 - **Capture / edit:** `new`, `append`, `prepend`, `read`, `distill`; `daily` (legacy)
-- **Retrieve:** ranked `recall` (FTS + one-hop graph RRF), filtered `search`,
+- **Retrieve:** ranked `recall` (token-OR FTS + one-hop graph RRF; skips domain MOCs), filtered `search`,
   `tags` / `by-tag`, `by-heat`, `dedupe`, `eval`
-- **Observability:** `cite`, `feedback`, `suggest`, `health`/`stats`, ledger (`search`, `recall_hit_rate` hints)
+- **Observability:** `cite`, `feedback`, `suggest`, `health`/`stats` (inventory + efficacy: `summary=`, token-n rates, `use_rate`, prev-window / `delta_*`, `low_use`)
 - **Graph:** `backlinks`, `links`, `orphans`, `unresolved`
 - **Organize:** `move`, `rename` (link-safe), `promote`, `supersede`, `moc`
 - **Layered memory:** optional `kind` + `status`/`supersedes` + `sources`
@@ -114,8 +114,10 @@ Injected adapters tell agents to:
 3. **Distill** inbox/raw into `atom` / `scenario` via `distill` (or `sources` +
    `[[raw-title]]`)
 4. **Skill SOPs** under `brain/skills/` with `--kind skill`
-5. **Health** via `health` when memory looks stale or the user asks. Prefer
-   hints `low_recall_hit_rate` / `capture_after_miss` / `high_kind_other`.
+5. **Health** via `health` when memory looks stale, or the user asks about
+   health / efficacy / before-after. Read `summary=` first. Prefer hints
+   `low_recall_hit_rate` / `wide_query` / `low_use` / `capture_after_miss` /
+   `high_kind_other`.
    `cite_rate` is deprecated. Confirm before any rewrite. Installed adapters
    pick up this text only after `upgrade`.
 

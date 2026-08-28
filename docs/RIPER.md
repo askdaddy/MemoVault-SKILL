@@ -1052,5 +1052,71 @@ mode so distill provenance closes the loop.
 ### Review
 - 无 helper 行为变更。
 
+## 20. Entry: 分词召回 + 诚实 7 天观测 0.8.0（2026-08-26）
+
+### Research
+- 本机 vault：4 词以上 recall 全 miss；`health` 的 `*_7d` 等于全历史。根因：
+  `rg -- "$q"` 整句匹配，以及 `mm_obs_field` 把行首 `ts=` 解析成 `ts=2026-08`。
+- `capture_after_miss` 按 UTC 日桶无时序，仪式性 miss 会污染整天的 capture。
+
+### Innovate
+- 方案 A：分词 OR + 修 ts + 收紧 capture_after_miss（相对 B 只做库内卫生、C 向量）。
+- 分词选 OR（按命中词数排序）而非 AND，以免 4 词查询过严。
+
+### Plan
+- `docs/superpowers/specs/2026-08-26-recall-token-obs-design.md`
+- `docs/superpowers/plans/2026-08-26-recall-token-obs.md`
+- 用户本轮明确要求落实方案 A。
+
+### Execute
+- `mm_obs_field` 先行匹配行首 `key=`；`capture_after_miss` 改为更早 miss + 标题重叠或 30 分钟窗；`wide_query_7d` / `hint=wide_query`。
+- `mmfs_recall` 按空白分词、`rg -F` 并集、按 token 命中数排序；ledger `token_n=`。
+- eval 夹具 c3；协议 1–3 词；VERSION `0.8.0`。
+
+### Review
+- `./scripts/e2e/run.sh`：pass=122 fail=0。本机 vault：`recall "PERC copyback RAID 换盘"` 命中 SOP；health `recall_7d` 不再等于全历史。
+
+## 21. Entry: recall 跳过 MOC + 0.8.0 合并缺口（2026-08-27）
+
+### Research
+- 方案 B 的 evergreen MOC 在 token-OR 下挤掉 leaf（`recall KillMode` 前五无 KillMode 笔记）。
+- 审查：INSTALL 未写 0.7.2→0.8.0 必须 upgrade；`wide_query` 无 e2e；epoch=0 重叠不要求同日；vault 一篇笔记含明文 key。
+
+### Innovate
+- 只在 `mmfs_recall` 跳过 MOC，不改 `search`。不新增 `--include-moc`。密钥只改本机 vault，不进 git。
+
+### Plan
+- `docs/superpowers/specs/2026-08-27-recall-skip-moc-design.md`
+- `docs/superpowers/plans/2026-08-27-recall-skip-moc.md`
+- 用户要求按建议定 spec 后落地。
+
+### Execute
+- `mmfs_is_moc`；recall FTS + 一跳跳过 MOC；epoch=0 重叠须同 UTC 日；wide_query hint e2e；INSTALL / SKILL / protocol / CHANGELOG。
+- 本机改写 openclaw-home 笔记，去掉密钥值。
+
+### Review
+- `./scripts/e2e/run.sh`：pass=127 fail=0。本机 `recall KillMode` / `recall PERC` 前五无领域 MOC。
+
+## 22. Entry: health 功效块 + 对照 0.8.0（2026-08-27）
+
+### Research
+- 现网 `health` 偏 L0 库存；ledger 已记 `read`/`feedback`/`distill` 但不打印。
+- 无词数桶、无上一窗、无快照差、无 `summary=`；`cite_rate` 分母是 hits；`heat_evergreen` 含 MOC。
+
+### Innovate
+- 方案 A：扩展 `health`（不新开子命令）。相对 B 新 `report` 命令、C 仅 canvas 交付。
+
+### Plan
+- `docs/superpowers/specs/2026-08-27-health-efficacy-design.md`
+- `docs/superpowers/plans/2026-08-27-health-efficacy.md`
+- 用户选 A，并要求功效（不只卫生）可观测。
+
+### Execute
+- `mm_obs_health`：`moc_count`；7d `read`/`feedback`/`distill`/`use_rate`/`hit_unused`/`read_uncited`；token-n 桶；prev 7d；`health-snap.log` + `delta_*`；`summary=`；`hint=low_use`。
+- 协议 / SKILL / ARCHITECTURE / AGENTS / README* / CHANGELOG；e2e 06-obs 孤立 ledger。
+
+### Review
+- `./scripts/e2e/run.sh`：pass=142 fail=0。本机 `health` 的 `summary=` 见本轮实测。
+
 
 

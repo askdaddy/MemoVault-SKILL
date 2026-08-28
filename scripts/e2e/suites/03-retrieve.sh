@@ -62,3 +62,32 @@ case "$rout" in
     esac
     ;;
 esac
+
+# 0.8.0: token-OR recall (words need not be a consecutive phrase)
+bag="${E2E_STEM} BagSop"
+e2e_mm new "$dom" "$bag" --kind skill --body "Controller PERC handles the array.
+Separate sentence with copyback after insert.
+RAID10 layout is required.
+Chinese token 换盘 in this line." >/dev/null 2>&1 || true
+bag_out="$(e2e_mm recall "PERC copyback RAID 换盘" --limit 5 --no-graph 2>/dev/null || true)"
+assert_contains "$bag_out" "title=$bag" "recall token-OR hits scattered SOP ($E2E_PHASE)"
+
+# 0.8.0: recall skips domain MOC; search still finds it
+moc_leaf="${E2E_STEM} KillMode Leaf"
+e2e_mm new "$dom" "$moc_leaf" --kind atom --body "leaf only" >/dev/null 2>&1 || true
+e2e_mm moc "$dom" >/dev/null 2>&1 || true
+moc_rec="$(e2e_mm recall "KillMode" --limit 5 2>/dev/null || true)"
+assert_contains "$moc_rec" "title=$moc_leaf" "recall KillMode hits leaf not crowded out ($E2E_PHASE)"
+case "$moc_rec" in
+  *_*-MOC.md*|*"title=$dom MOC"*)
+    e2e_fail "recall omits domain MOC ($E2E_PHASE)" "out=$moc_rec"
+    ;;
+  *) e2e_pass "recall omits domain MOC ($E2E_PHASE)" ;;
+esac
+moc_search="$(e2e_mm search "KillMode" --limit 20 2>/dev/null || true)"
+case "$moc_search" in
+  *"_${dom}-MOC.md"*|*"title=$dom MOC"*)
+    e2e_pass "search still finds domain MOC ($E2E_PHASE)"
+    ;;
+  *) e2e_fail "search still finds domain MOC ($E2E_PHASE)" "out=$moc_search" ;;
+esac

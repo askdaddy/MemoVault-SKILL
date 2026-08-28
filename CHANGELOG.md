@@ -11,12 +11,40 @@ human-facing release log. Every agent change in this repository must add an
 entry here in the same Execute (`AGENTS.md` section 5): use `[Unreleased]`
 unless `VERSION` also bumps, in which case add `## [x.y.z] - YYYY-MM-DD`.
 
-## [Unreleased]
+## [0.8.0] - 2026-08-28
+
+### Added
+
+- `recall` token-OR: whitespace tokens are fixed-string matches; notes rank by
+  how many tokens hit, then existing graph RRF + heat/kind.
+- Ledger `event=recall` field `token_n=`.
+- `health` field `wide_query_7d` and `hint=wide_query` (5+ recalls in the
+  window with `token_n>=4`).
+- `health` efficacy block after `wide_query_7d=`: `moc_count`, `read_7d`,
+  `feedback_7d`, `distill_7d`, `use_rate`, `hit_unused_7d`,
+  `read_uncited_7d`, token-n buckets (`recall_n1_*` / `recall_n23_*` /
+  `recall_n4_*` / `recall_nunk_7d`), previous 7-day window (`*_prev` /
+  `recall_hit_rate_prev7d`), `summary=`, `hint=low_use`.
+- Vault-local `.memovault/health-snap.log` (keep 200) and `delta_<key>=`
+  versus the previous snapshot.
+- Eval fixture case `c3` (scattered PERC / copyback / RAID / 换盘 SOP).
+- Charter (`AGENTS.md`) requires every agent change to update this changelog
+  in the same Execute. `docs/DEVELOPMENT.md` versioning matches.
 
 ### Changed
 
-- Charter (`AGENTS.md`) requires every agent change to update this changelog
-  in the same Execute. `docs/DEVELOPMENT.md` versioning matches.
+- Protocol: recall with 1-3 distinctive tokens; on miss, retry the shortest
+  token then `search`. Installed agents pick this up only after `upgrade`.
+- `capture_after_miss_7d` counts a capture only when an earlier miss shares
+  title tokens or falls within 30 minutes (no same-UTC-day bagging).
+- Default `recall` omits domain MOC indexes (`_*-MOC.md`) so evergreen maps
+  cannot crowd out leaf notes after token-OR. `search` and `moc` still list
+  them. Use `search` or `moc <domain>` when you want the map.
+
+### Fixed
+
+- `mm_obs_field` now reads the first ledger key (`ts=`) correctly, so `*_7d`
+  health windows are real 7-day windows.
 
 ## [0.7.2] - 2026-08-14
 

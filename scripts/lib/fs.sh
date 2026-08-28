@@ -385,6 +385,22 @@ mmfs_search_file_ok() {
   return 0
 }
 
+# Return 0 if file is a domain MOC index. recall skips these; search does not.
+mmfs_is_moc() {
+  local file="$1" base tags tok
+  [ -f "$file" ] || return 1
+  base="$(basename "$file")"
+  case "$base" in
+    _*-MOC.md) return 0 ;;
+  esac
+  tags="$(mmfs_get_prop "$file" tags)"
+  tags="$(printf '%s' "$tags" | tr '[],' '   ')"
+  for tok in $tags; do
+    [ "$tok" = moc ] && return 0
+  done
+  return 1
+}
+
 # Full-text search under brain/. Default excludes kind:raw and status:superseded.
 # Flags: --limit N --domain D --kind K --heat H --include-raw --include-superseded
 mmfs_search() {
@@ -503,7 +519,17 @@ mmfs_title_to_relpath() {
   fi
 }
 
+# Split a recall query into whitespace tokens (one per line). Empty tokens dropped.
+mmfs_query_tokens() {
+  printf '%s\n' "$1" | awk '{
+    n = split($0, a, /[[:space:]]+/)
+    for (i = 1; i <= n; i++) if (a[i] != "") print a[i]
+  }'
+}
+
 # Ranked recall with optional one-hop graph expansion + simplified RRF.
+# Query is token-OR: each whitespace token is a fixed-string match; notes are
+# ranked by how many tokens hit, then existing RRF + heat/kind.
 # Flags: --limit N --no-graph --include-superseded
 # Lines: path=... title=... kind=... heat=... snippet=...
 mmfs_recall() {
@@ -521,55 +547,60 @@ mmfs_recall() {
   mmfs_ensure_vault
   [ -d "$MM_VAULT/brain" ] || return 0
 
-  local raw="" line abs rel fpath text snippet
+  local abs rel fpath snippet
   local title kind heat updated hs ks
-  local q_tok rank_a=0
-  local tmpa tmpb tmpm
+  local q_tok rank_a=0 token_n=0 tok tok_hits
+  local tmpa tmpb tmpm tok_file union_file scored_file
   q_tok="$(printf '%s' "$q" | tr ' ' '_')"
   tmpa="$(mktemp)"
   tmpb="$(mktemp)"
   tmpm="$(mktemp)"
+  tok_file="$(mktemp)"
+  union_file="$(mktemp)"
+  scored_file="$(mktemp)"
+  mmfs_query_tokens "$q" > "$tok_file"
+  token_n="$(grep -c . "$tok_file" 2>/dev/null || true)"
+  [ -n "$token_n" ] || token_n=0
 
-  if command -v rg >/dev/null 2>&1; then
-    raw="$(rg --no-heading -n -- "$q" "$MM_VAULT/brain" 2>/dev/null || true)"
-  else
-    raw="$(grep -rn -- "$q" "$MM_VAULT/brain" 2>/dev/null || true)"
+  if [ "$token_n" -gt 0 ]; then
+    while IFS= read -r tok || [ -n "$tok" ]; do
+      [ -n "$tok" ] || continue
+      if command -v rg >/dev/null 2>&1; then
+        rg -l -F -- "$tok" "$MM_VAULT/brain" 2>/dev/null || true
+      else
+        grep -rlF -- "$tok" "$MM_VAULT/brain" 2>/dev/null || true
+      fi
+    done < "$tok_file" | sort -u > "$union_file"
   fi
 
-  local seen=""
-  if [ -n "$raw" ]; then
-    while IFS= read -r line || [ -n "$line" ]; do
-      [ -n "$line" ] || continue
-      case "$line" in
-        "$MM_VAULT"/*) rel="${line#"$MM_VAULT"/}" ;;
-        *) rel="$line" ;;
-      esac
-      fpath="$(printf '%s\n' "$rel" | awk -F: '
-        {
-          p=$1
-          for (i=2; i<=NF; i++) {
-            if (p ~ /\.md$/) { print p; exit }
-            p=p ":" $i
-          }
-          print $1
-        }')"
-      abs="$MM_VAULT/$fpath"
+  if [ -s "$union_file" ]; then
+    while IFS= read -r abs || [ -n "$abs" ]; do
       [ -f "$abs" ] || continue
-      case "$seen" in *"|$fpath|"*) continue ;; esac
+      fpath="${abs#"$MM_VAULT"/}"
       mmfs_search_file_ok "$abs" "" "" "" 0 "$include_superseded" || continue
-      seen="${seen}|$fpath|"
-      text="$(printf '%s\n' "$rel" | awk -F: '
-        {
-          p=$1; idx=2
-          for (i=2; i<=NF; i++) {
-            if (p ~ /\.md$/) { idx=i+1; break }
-            p=p ":" $i; idx=i+1
-          }
-          out=""
-          for (j=idx; j<=NF; j++) { if (out!="") out=out ":"; out=out $j }
-          print out
-        }')"
-      snippet="$(printf '%s' "$text" | tr '\n\r\t' ' ' | sed -E 's/  +/ /g; s/^ //; s/ $//' | cut -c1-120)"
+      mmfs_is_moc "$abs" && continue
+      tok_hits=0
+      snippet=""
+      while IFS= read -r tok || [ -n "$tok" ]; do
+        [ -n "$tok" ] || continue
+        if command -v rg >/dev/null 2>&1; then
+          if rg -F -q -- "$tok" "$abs" 2>/dev/null; then
+            tok_hits=$((tok_hits + 1))
+            if [ -z "$snippet" ]; then
+              snippet="$(rg --no-heading -n -F -m 1 -- "$tok" "$abs" 2>/dev/null | head -1)"
+            fi
+          fi
+        else
+          if grep -Fq -- "$tok" "$abs" 2>/dev/null; then
+            tok_hits=$((tok_hits + 1))
+            if [ -z "$snippet" ]; then
+              snippet="$(grep -nF -- "$tok" "$abs" 2>/dev/null | head -1)"
+            fi
+          fi
+        fi
+      done < "$tok_file"
+      [ "$tok_hits" -gt 0 ] || continue
+      snippet="$(printf '%s' "$snippet" | sed -E 's/^[0-9]+://; s/^[^:]+:[0-9]+://' | tr '\n\r\t' ' ' | sed -E 's/  +/ /g; s/^ //; s/ $//' | cut -c1-120)"
       title="$(mmfs_get_prop "$abs" title)"
       [ -n "$title" ] || title="$(basename "$fpath" .md)"
       kind="$(mmfs_get_prop "$abs" kind)"
@@ -580,17 +611,30 @@ mmfs_recall() {
       [ -n "$updated" ] || updated="1970-01-01"
       hs="$(mmfs_heat_score "$heat")"
       ks="$(mmfs_kind_score "$kind")"
-      rank_a=$((rank_a + 1))
-      # path rank_a hs ks updated title kind heat snippet
       printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$fpath" "$rank_a" "$hs" "$ks" "$updated" "$title" "$kind" "$heat" "$snippet" >> "$tmpa"
-    done <<EOF
-$raw
-EOF
+        "$tok_hits" "$fpath" "$hs" "$ks" "$updated" "$title" "$kind" "$heat" "$snippet" >> "$scored_file"
+    done < "$union_file"
   fi
 
+  if [ -s "$scored_file" ]; then
+    sort -t '	' -k1,1nr -k5,5r "$scored_file" | while IFS='	' read -r _th fpath hs ks updated title kind heat snippet; do
+      [ -n "$fpath" ] || continue
+      rank_a=$((rank_a + 1))
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$fpath" "$rank_a" "$hs" "$ks" "$updated" "$title" "$kind" "$heat" "$snippet"
+    done > "$tmpa"
+  fi
+  rm -f "$tok_file" "$union_file" "$scored_file"
+
+  local seen=""
+  if [ -s "$tmpa" ]; then
+    while IFS='	' read -r fpath _r _hs _ks _u _t _k _h _s; do
+      [ -n "$fpath" ] || continue
+      seen="${seen}|$fpath|"
+    done < "$tmpa"
+  fi
   if [ ! -s "$tmpa" ]; then
-    mm_obs_log "event=recall" "q=$q_tok" "hits=0" "top="
+    mm_obs_log "event=recall" "q=$q_tok" "token_n=$token_n" "hits=0" "top="
     rm -f "$tmpa" "$tmpb" "$tmpm"
     return 0
   fi
@@ -611,6 +655,7 @@ EOF
         [ -n "$nrel" ] || continue
         nabs="$MM_VAULT/$nrel"
         mmfs_search_file_ok "$nabs" "" "" "" 0 "$include_superseded" || continue
+        mmfs_is_moc "$nabs" && continue
         case "$seen" in *"|$nrel|"*) continue ;; esac
         seen="${seen}|$nrel|"
         nbr_count=$((nbr_count + 1))
@@ -640,6 +685,7 @@ EOF
         esac
         [ -f "$nabs" ] || continue
         mmfs_search_file_ok "$nabs" "" "" "" 0 "$include_superseded" || continue
+        mmfs_is_moc "$nabs" && continue
         case "$seen" in *"|$nrel|"*) continue ;; esac
         seen="${seen}|$nrel|"
         nbr_count=$((nbr_count + 1))
@@ -696,7 +742,7 @@ EOF
   hits="$(printf '%s\n' "$ranked" | grep -c . || true)"
   titles="$(printf '%s\n' "$ranked" | awk -F'	' '{ printf "%s%s", (NR>1?",":""), $6 }')"
   top_tok="$(printf '%s' "$titles" | tr ' ' '_')"
-  mm_obs_log "event=recall" "q=$q_tok" "hits=$hits" "top=$top_tok"
+  mm_obs_log "event=recall" "q=$q_tok" "token_n=$token_n" "hits=$hits" "top=$top_tok"
   printf '%s\n' "$ranked" | while IFS='	' read -r _sc _hs _ks _upd fpath title kind heat snippet; do
     [ -n "$fpath" ] || continue
     printf 'path=%s title=%s kind=%s heat=%s snippet=%s\n' "$fpath" "$title" "$kind" "$heat" "$snippet"

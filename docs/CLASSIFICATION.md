@@ -102,8 +102,8 @@ Rules:
 Promotion rules:
 - The agent SUGGESTS promotion; the user confirms. `suggest` looks at 30-day
   ledger `cite`/`read`/`feedback` plus incoming backlinks (not heat auto-bump).
-- `health` may also hint `distill_inbox` / `high_orphan_pct` / new 0.7.2 hints;
-  still no silent rewrite.
+- `health` may also hint `distill_inbox` / `high_orphan_pct` / 0.7.2+ hints
+  including `wide_query` and `low_use`; still no silent rewrite.
 - Promotion bumps `heat` and `updated`.
 - Demotion is manual only (the agent never demotes on its own).
 

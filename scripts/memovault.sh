@@ -207,7 +207,7 @@ Retrieve:
   tags                          all tags with counts
   tag <name> | by-tag <name>    notes bearing a tag
   by-heat                       notes grouped by heat tier
-  health | stats                vault + ledger metrics (L0-L2 proxies)
+  health | stats                vault inventory + efficacy (L0-L2 proxies)
   ledger:rotate [--keep N]      trim ledger.log (default keep 5000 lines)
   eval [--fixture dir] [--limit N] [--no-graph]
                                 recall hit@k gate on fixture cases

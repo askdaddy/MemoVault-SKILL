@@ -47,7 +47,7 @@ esac
 hub="${E2E_STEM} FwdHub"
 spoke="${E2E_STEM} FwdSpoke"
 e2e_mm new "$dom" "$hub" --kind atom --body "graph-token $token See [[$spoke]]" >/dev/null 2>&1 || true
-e2e_mm new "$dom" "$spoke" --kind atom --body "spoke only no graph-token" >/dev/null 2>&1 || true
+e2e_mm new "$dom" "$spoke" --kind atom --body "spoke only neighbor via wikilink" >/dev/null 2>&1 || true
 nog="$(e2e_mm recall "graph-token $token" --limit 5 --no-graph 2>/dev/null || true)"
 case "$nog" in
   *"title=$spoke"*) e2e_fail "recall --no-graph excludes spoke ($E2E_PHASE)" "out=$nog" ;;
@@ -65,6 +65,7 @@ ev="$(e2e_mm eval --limit 5 2>/dev/null || true)"
 rc=$?
 assert_contains "$ev" "hit_at_k=" "eval prints hit_at_k ($E2E_PHASE)"
 assert_contains "$ev" "case=c1" "eval runs case c1 ($E2E_PHASE)"
+assert_contains "$ev" "case=c3 hit=1" "eval bag-of-words case c3 hits ($E2E_PHASE)"
 if [ "$rc" -eq 0 ]; then
   e2e_pass "eval exit 0 at hit threshold ($E2E_PHASE)"
 else

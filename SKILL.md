@@ -1,6 +1,6 @@
 ---
 name: memovault
-version: 0.7.2
+version: 0.8.0
 description: "Sink knowledge into a local Obsidian vault with bash. Use when the user wants to capture, save, record, or sink knowledge, notes, learnings, decisions, meeting takeaways, code snippets, or research into their memo vault / second brain / Obsidian knowledge base; or to create, edit, link, search, classify by domain, promote by heat, distill raw notes, recall ranked context, check vault health, or maintain backlinks and skill SOPs. Trigger phrases: 记到笔记 / 记一下 / 笔记里记一下 / 沉淀 / 沉淀一下 / 存到 vault / 存一下 / 存档 / 存到知识库 / 知识库 / 备忘录 / 双链 / 回链 / 按领域归档 / 提升热度 / 日记 / 每日笔记 / remember this / save this / save to vault / save to notes / memo it / note this / capture this / second brain / knowledge base / daily note / backlinks / link this note."
 ---
 
@@ -174,7 +174,7 @@ single shell/filesystem implementation in `scripts/lib/fs.sh`.
 "$MM" search "<query>" --limit 20 [--domain d] [--kind k] [--heat h] \
   [--include-raw] [--include-superseded]
 "$MM" recall "<query>" [--limit 5] [--no-graph] [--include-superseded]
-                                       # ranked + one-hop graph RRF (prefer for recall)
+                                       # token-OR FTS + one-hop graph RRF
 "$MM" cite "<Title>"                   # record that a note was used in an answer
 "$MM" feedback "<Title>" +1|-1         # explicit reinforce signal (ledger only)
 "$MM" dedupe "<query-or-title>"        # near-duplicate candidates before new/append
@@ -183,7 +183,7 @@ single shell/filesystem implementation in `scripts/lib/fs.sh`.
 "$MM" tag "<tag>"                      # notes bearing a tag
 "$MM" by-tag "<tag>"
 "$MM" by-heat                          # notes grouped by heat tier
-"$MM" health                           # L0-L2 proxy metrics (alias: stats)
+"$MM" health                           # inventory + efficacy (alias: stats)
 "$MM" eval [--fixture dir] [--limit 5] # recall hit@k gate on fixture vault
 "$MM" ledger:rotate [--keep 5000]      # trim .memovault/ledger.log
 ```
@@ -232,13 +232,18 @@ This skill is meant to be always on, not only triggered by an explicit
 ### Recall (automatic)
 
 At the start of answering a user request:
-1. Run one `recall "<narrow keywords>"` (prefer `--limit 5`). Fall back to
-   `search` if needed.
-2. Helper excludes `kind: raw` and ranks by heat/kind. Progressive disclosure:
-   use titles/snippets first; `read` at most **3** notes per task (usually 1).
+1. Run one `recall` with **1-3 distinctive tokens** (prefer `--limit 5`).
+   Do not dump 4+ keywords; `hint=wide_query` means cut the query. Fall back
+   to `search` if needed. Helper token-ORs the words (they need not be a
+   consecutive phrase).
+2. Helper excludes `kind: raw` and domain MOC indexes (`_*-MOC.md`). It ranks
+   by token overlap, then heat/kind. Progressive disclosure: use
+   titles/snippets first; `read` at most **3** notes per task (usually 1).
+   To open a domain map, use `search` or `moc <domain>` — not `recall`.
 3. When a note materially affects the answer, run `cite "<title>"` and mention
    the note briefly.
-4. If the vault is empty or nothing matches, skip silently (do not narrate).
+4. If the first recall misses, retry once with the shortest distinctive token,
+   then `search`. If still nothing, skip silently (do not narrate).
 
 ### Capture (semi-automatic)
 
@@ -278,18 +283,27 @@ When the turn produced a reusable how-to that would save future turns:
 
 ### Health (self-check)
 
-When the user asks about memory health, or inbox/raw is piling up, run `health`
-and/or `suggest` and act on `hint=` / `suggest=` lines. Prefer new hints when
-present (confirm with the user before any vault rewrite):
+When the user asks about memory health, efficacy, before/after, 效果, 对比,
+or 观测, or inbox/raw is piling up, run `health` and/or `suggest`. Read
+`summary=` first, then `use_rate`, `recall_n*_hit_rate`, `delta_*`, and
+`hint=` / `suggest=` lines. Prefer new hints when present (confirm with the
+user before any vault rewrite):
 
-- `low_recall_hit_rate`: narrow the recall query and retry.
+- `low_recall_hit_rate`: narrow the recall query (1-3 tokens) and retry.
+- `wide_query`: the last window used 4+ token queries; cut to 1-3 tokens.
+- `low_use`: recall hit notes but nothing was `cite`d; cite when a note
+  materially affected the answer.
 - `capture_after_miss`: after a miss, run `search` / `dedupe` before capture.
+  Do not treat a ritual start-of-turn miss as a reason to create a note.
 - `high_kind_other`: add `kind` when missing; if invalid, set a legal kind.
 
 Treat `hint=low_cite_rate` as legacy: ignore it when a new hint is present, and
 do not use it as the sole action driver. Prefer `recall_hit_rate`,
-`recall_hits_7d`, `cite_7d`, `recapture_new_dup`, `kind_other_pct`. `search_7d`
-is informational (compare with `recall_7d`). `cite_rate` and `recapture_dup`
+`recall_n1_hit_rate` / `recall_n4_hit_rate`, `use_rate`, `cite_7d`,
+`read_7d`, `recall_hit_rate_prev7d`, `delta_*`, `recapture_new_dup`,
+`kind_other_pct`, `wide_query_7d`, `moc_count`. `search_7d` is informational
+(compare with `recall_7d`). `heat_evergreen` includes MOC indexes; use
+`moc_count` when judging content maturity. `cite_rate` and `recapture_dup`
 are deprecated. Confirm before `promote`. Do not silently rewrite the vault.
 
 When knowledge is replaced, prefer `supersede "<Old>" "<New>"` over deleting.
@@ -312,7 +326,11 @@ Before creating a note, run `dedupe "<title>"` and prefer `append` on hits.
 The helper always runs in the single shell/filesystem runtime:
 
 - Notes are plain markdown files under `$AGENT_MEMO_VAULT/brain/<domain>/`.
-- `search` uses `ripgrep` (`rg`), falling back to `grep -rn`.
+- `search` uses `ripgrep` (`rg`), falling back to `grep -rn` (phrase / regex).
+- `recall` splits the query on whitespace, matches each token as a fixed
+  string (OR), ranks by how many tokens hit, then one-hop graph RRF + heat/kind.
+  Domain MOC files (`_*-MOC.md` / `tags: [moc]`) are omitted from default
+  `recall` so the index cannot crowd out leaf notes. `search` still finds them.
 - `backlinks`/`links` scan for `[[Title]]` text (approximate; aliases not fully
   resolved).
 - `rename` rewrites `[[wikilinks]]` across the vault (link-safe) via
@@ -341,5 +359,6 @@ deprecation warning if it sees `MM_FORCE_FS=1`.
   backlinks.
 - Obsidian Sync, Publish, Bases, plugins: not exposed by this skill.
 - Human-rated answer quality scores: `health` uses proxy metrics only
-  (`recall_hit_rate`, `cite_7d`, `recapture_new_dup`, `kind_other_pct`;
-  `cite_rate` / `recapture_dup` are deprecated).
+  (`recall_hit_rate`, token-n buckets, `use_rate`, `cite_7d`, `read_7d`,
+  `recapture_new_dup`, `kind_other_pct`, `wide_query_7d`, prev-window and
+  snapshot `delta_*`; `cite_rate` / `recapture_dup` are deprecated).

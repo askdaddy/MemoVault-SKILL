@@ -15,7 +15,7 @@ no-emoji rule.
 - `SKILL.md` is the single source of truth for the agent contract. Installed
   copies are pointer stubs.
 - `scripts/memovault.sh` dispatches; `scripts/lib/fs.sh`, `rewrite.sh`,
-  `classify.sh`, `obs.sh`, and `eval.sh` implement behavior.
+  `classify.sh`, `obs.sh`, `eval.sh`, and `snip.sh` implement behavior.
 - `install/install.sh` + `install/targets.sh` + `install/lib/resolve.sh` +
   `install/adapters/*.md` handle per agent installation and upgrade.
 - `templates/` are optional Obsidian Templates files for humans; they are not
@@ -28,7 +28,7 @@ no-emoji rule.
 1. Add the dispatch branch in `scripts/memovault.sh` (`main()` `case`).
 2. Implement vault I/O in `scripts/lib/fs.sh`. Wikilink rewriting goes in
    `scripts/lib/rewrite.sh`. Ledger / health / suggest go in `lib/obs.sh`.
-   Recall fixture eval goes in `lib/eval.sh`.
+   Recall fixture eval goes in `lib/eval.sh`. CLI snippets go in `lib/snip.sh`.
 3. If it touches classification, add a helper in `scripts/lib/classify.sh`.
 4. Document it in `SKILL.md` (Commands) and the mapping table in
    `docs/ARCHITECTURE.md` (section 5).

@@ -95,8 +95,8 @@ mmfs_new() {
   [ -n "$domain" ] && [ -n "$title" ] || { mm_die "usage: new <domain> <title>"; }
   if [ -n "$kind" ]; then
     case "$kind" in
-      raw|atom|scenario|persona|skill) ;;
-      *) mm_die "invalid kind: $kind (raw|atom|scenario|persona|skill)" ;;
+      raw|atom|scenario|persona|skill|snippet) ;;
+      *) mm_die "invalid kind: $kind (raw|atom|scenario|persona|skill|snippet)" ;;
     esac
   fi
   mmfs_ensure_vault
@@ -106,7 +106,9 @@ mmfs_new() {
   local today; today="$(mmfs_today)"
   local title_clean; title_clean="$(mmfs_sanitize_title "$title")"
   local heat="seedling"
-  [ "$kind" = skill ] && heat="growing"
+  case "$kind" in
+    skill|snippet) heat="growing" ;;
+  esac
   {
     printf -- '---\n'
     printf 'title: %s\n' "$title_clean"
@@ -352,18 +354,26 @@ mmfs_set_prop() {
 }
 
 # Return 0 if note file passes search filters.
-# Args: file domain kind heat include_raw include_superseded
+# Args: file domain kind heat include_raw include_superseded [include_snippet]
 mmfs_search_file_ok() {
   local file="$1" want_domain="$2" want_kind="$3" want_heat="$4" include_raw="$5"
   local include_superseded="${6:-0}"
+  local include_snippet="${7:-0}"
   local rel prop
   rel="${file#"$MM_VAULT"/}"
   case "$rel" in
     daily/*|.memovault/*) return 1 ;;
   esac
+  if [ "$want_kind" = snippet ]; then
+    include_snippet=1
+  fi
   if [ "$include_raw" != 1 ]; then
     prop="$(mmfs_get_prop "$file" kind)"
     [ "$prop" = raw ] && return 1
+  fi
+  if [ "$include_snippet" != 1 ]; then
+    prop="$(mmfs_get_prop "$file" kind)"
+    [ "$prop" = snippet ] && return 1
   fi
   if [ "$include_superseded" != 1 ]; then
     prop="$(mmfs_get_prop "$file" status)"
@@ -401,11 +411,13 @@ mmfs_is_moc() {
   return 1
 }
 
-# Full-text search under brain/. Default excludes kind:raw and status:superseded.
-# Flags: --limit N --domain D --kind K --heat H --include-raw --include-superseded
+# Full-text search under brain/. Default excludes kind:raw, kind:snippet, and
+# status:superseded.
+# Flags: --limit N --domain D --kind K --heat H --include-raw --include-snippet
+#        --include-superseded
 mmfs_search() {
   local q="${1:-}"; shift 2>/dev/null || true
-  local limit="" domain="" kind="" heat="" include_raw=0 include_superseded=0
+  local limit="" domain="" kind="" heat="" include_raw=0 include_superseded=0 include_snippet=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --limit) limit="${2:-}"; shift 2 ;;
@@ -413,11 +425,12 @@ mmfs_search() {
       --kind) kind="${2:-}"; shift 2 ;;
       --heat) heat="${2:-}"; shift 2 ;;
       --include-raw) include_raw=1; shift ;;
+      --include-snippet) include_snippet=1; shift ;;
       --include-superseded) include_superseded=1; shift ;;
       *) shift ;;
     esac
   done
-  [ -n "$q" ] || mm_die "usage: search <query> [--limit N] [--domain D] [--kind K] [--heat H] [--include-raw] [--include-superseded]"
+  [ -n "$q" ] || mm_die "usage: search <query> [--limit N] [--domain D] [--kind K] [--heat H] [--include-raw] [--include-snippet] [--include-superseded]"
   mmfs_ensure_vault
   if [ ! -d "$MM_VAULT/brain" ]; then
     mm_obs_maybe_log_search "$q" 0
@@ -458,7 +471,7 @@ mmfs_search() {
     if [ -n "$cache_hit" ]; then
       ok="$cache_hit"
     else
-      if mmfs_search_file_ok "$abs" "$domain" "$kind" "$heat" "$include_raw" "$include_superseded"; then
+      if mmfs_search_file_ok "$abs" "$domain" "$kind" "$heat" "$include_raw" "$include_superseded" "$include_snippet"; then
         ok=1
       else
         ok=0
@@ -491,11 +504,11 @@ mmfs_heat_score() {
   esac
 }
 
-# Kind rank: persona|skill|scenario|atom=2, empty/other=1, raw=0
+# Kind rank: persona|skill|scenario|atom=2, empty/other=1, raw|snippet=0
 mmfs_kind_score() {
   case "$1" in
     persona|skill|scenario|atom) printf '2' ;;
-    raw) printf '0' ;;
+    raw|snippet) printf '0' ;;
     *) printf '1' ;;
   esac
 }

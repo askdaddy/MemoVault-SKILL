@@ -289,7 +289,7 @@ mm_obs_dash_neg() {
 
 mm_obs_health() {
   mmfs_ensure_vault
-  local notes_total=0 kind_atom=0 kind_raw=0 kind_scenario=0 kind_persona=0 kind_skill=0 kind_other=0
+  local notes_total=0 kind_atom=0 kind_raw=0 kind_scenario=0 kind_persona=0 kind_skill=0 kind_snippet=0 kind_other=0
   local heat_seedling=0 heat_growing=0 heat_evergreen=0
   local inbox_raw_count=0 legacy_daily_count=0 superseded_count=0 moc_count=0
   local orphan_count=0 orphan_pct=0
@@ -317,6 +317,7 @@ mm_obs_health() {
         scenario) kind_scenario=$((kind_scenario + 1)) ;;
         persona) kind_persona=$((kind_persona + 1)) ;;
         skill) kind_skill=$((kind_skill + 1)) ;;
+        snippet) kind_snippet=$((kind_snippet + 1)) ;;
         *) kind_other=$((kind_other + 1)) ;;
       esac
       case "$h" in
@@ -611,6 +612,7 @@ EOF
   printf 'kind_scenario=%s\n' "$kind_scenario"
   printf 'kind_persona=%s\n' "$kind_persona"
   printf 'kind_skill=%s\n' "$kind_skill"
+  printf 'kind_snippet=%s\n' "$kind_snippet"
   printf 'kind_other=%s\n' "$kind_other"
   printf 'kind_other_pct=%s\n' "$kind_other_pct"
   printf 'heat_seedling=%s\n' "$heat_seedling"

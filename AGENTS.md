@@ -64,6 +64,7 @@ scripts/
   lib/classify.sh      domain/heat/MOC helpers
   lib/obs.sh           ledger, cite, feedback, suggest, health
   lib/eval.sh          recall hit@k fixture gate
+  lib/snip.sh          CLI snippet library (kind: snippet)
 install/
   install.sh           installer: --agent <x> | --all | --register-vault | --upgrade
   targets.sh           agent -> {path, adapter, kind} mapping
@@ -79,7 +80,8 @@ VERSION
 The helper `scripts/memovault.sh` exposes subcommands to the agent. There is a
 single shell/filesystem runtime: vault reads and writes go through
 `scripts/lib/fs.sh`; `rename` rewrites `[[wikilinks]]` via `scripts/lib/rewrite.sh`;
-ledger / `health` / `suggest` live in `scripts/lib/obs.sh`. There is no `cli`
+ledger / `health` / `suggest` live in `scripts/lib/obs.sh`; CLI snippets live
+in `scripts/lib/snip.sh`. There is no `cli`
 mode, no Obsidian binary probe, and no GUI launch. `MM_FORCE_FS` is accepted
 for backward compatibility but ignored (the runtime is always shell).
 
@@ -87,12 +89,13 @@ Full surface: `preflight`, `upgrade`, `new`, `append`, `prepend`, `read`,
 `distill`, `daily`, `search`, `recall`, `cite`, `feedback`, `dedupe`, `suggest`,
 `tags`, `by-tag`, `backlinks`, `links`, `orphans`, `unresolved`, `move`,
 `rename`, `promote`, `supersede`, `moc`, `by-heat`, `health`, `stats`, `eval`,
-`ledger:rotate`.
+`ledger:rotate`, `snip` (alias `snippet`).
 
 `health` prints L0 vault counts plus L1/L2 ledger proxies (inventory and
 efficacy). Prefer `summary=`, `recall_hit_rate`, token-n hit rates,
 `use_rate`, `cite_7d`, `read_7d`, `recall_hit_rate_prev7d`, `delta_*`,
-`recapture_new_dup`, `kind_other_pct`, `wide_query_7d`, `moc_count`, and the
+`recapture_new_dup`, `kind_other_pct`, `wide_query_7d`, `moc_count`,
+`kind_snippet`, and the
 hints `low_recall_hit_rate` / `wide_query` / `low_use` / `capture_after_miss` /
 `high_kind_other`.
 `cite_rate` and `recapture_dup` remain with their original formulas (deprecated).

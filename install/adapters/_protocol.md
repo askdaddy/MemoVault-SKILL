@@ -12,9 +12,11 @@ At the start of answering a user request, before you respond:
 - Run one `__MEMOVAULT_HELPER__ recall "<1-3 distinctive tokens>"` (prefer `--limit 5`).
   Do not dump 4+ keywords. If recall is unavailable, fall back to `search`.
   Helper token-ORs the words; they need not be a consecutive phrase.
-- Helper already filters out `kind: raw` and domain MOC indexes (`_*-MOC.md`).
+- Helper already filters out `kind: raw`, `kind: snippet`, and domain MOC
+  indexes (`_*-MOC.md`).
   It ranks by token overlap, then heat/kind. Prefer the top hits; `read` at
   most 3 notes per task (usually 1). Use `search` or `moc <domain>` for maps.
+  For CLI commands use `snip search` / `snip get`.
 - When a note materially affects your answer, run
   `__MEMOVAULT_HELPER__ cite "<title>"` and mention the note briefly.
 - If the first recall misses, retry once with the shortest distinctive token,
@@ -57,11 +59,30 @@ When the turn produced a reusable how-to:
   vault templates are optional for humans only).
 - Link related domain notes with `[[wikilinks]]`.
 
-### 5. Classify, link, health
+### 5. CLI snippets (commands)
+
+Reusable shell commands live in `kind: snippet` (not SOP `kind: skill`).
+Default `recall` / `search` skip them. The helper never executes stored
+commands.
+
+- User says "save this command" / "snippet this" / "remember this command" /
+  "记这个命令" / "存成 snippet" / "这段以后要用" / "pet 一下":
+  `__MEMOVAULT_HELPER__ snip new "<description>" --command "..." [--tags a,b]`
+  then confirm title and command.
+- A non-trivial re-runnable CLI from this turn (flags, pipes, placeholders)
+  that the user will look up later: propose `snip new` first, write after
+  confirmation.
+- Do not store one-off debug commands, secrets, or machine-specific paths
+  (unless parameterized as `<name>` or `<name=default>`).
+- Retrieve with `snip search` / `snip list`, then `snip get`. Cite the title
+  when it affected the answer.
+- Search existing snippets before creating (duplicate description fails).
+
+### 6. Classify, link, health
 
 - One domain per note; domains live under `brain/<domain>/`. Skill SOPs under
   `brain/skills/`.
-- Optional `kind`: `raw` | `atom` | `scenario` | `persona` | `skill`.
+- Optional `kind`: `raw` | `atom` | `scenario` | `persona` | `skill` | `snippet`.
 - Optional `status`: `active` (default) | `superseded`. Prefer
   `supersede <old> <new>` when knowledge is replaced; default recall skips
   superseded notes.
@@ -85,7 +106,7 @@ When the turn produced a reusable how-to:
   indexes. `cite_rate` and `recapture_dup` are deprecated. Do not
   silently rewrite the vault.
 
-### 6. Guardrails
+### 7. Guardrails
 
 - Never write outside the vault. Never use emoji in note content or frontmatter.
 - Confirm before any delete or bulk move; destructive ops need explicit consent.

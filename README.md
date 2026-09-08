@@ -11,12 +11,12 @@ same vault in Obsidian for browsing.
 | | |
 |---|---|
 | Skill name | `memovault` |
-| Version | `0.8.0` (see `VERSION`) |
+| Version | `0.9.0` (see `VERSION`) |
 | Skill source (after install) | `~/.agents/skills/memovault/` |
 | Knowledge vault | `~/.agent-memo-vault/` |
 | Vault override | `AGENT_MEMO_VAULT` |
 | Heat tiers | `seedling` / `growing` / `evergreen` |
-| Optional note kinds | `raw` / `atom` / `scenario` / `persona` / `skill` |
+| Optional note kinds | `raw` / `atom` / `scenario` / `persona` / `skill` / `snippet` |
 
 ## Why
 

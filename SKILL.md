@@ -1,7 +1,7 @@
 ---
 name: memovault
-version: 0.8.0
-description: "Sink knowledge into a local Obsidian vault with bash. Use when the user wants to capture, save, record, or sink knowledge, notes, learnings, decisions, meeting takeaways, code snippets, or research into their memo vault / second brain / Obsidian knowledge base; or to create, edit, link, search, classify by domain, promote by heat, distill raw notes, recall ranked context, check vault health, or maintain backlinks and skill SOPs. Trigger phrases: 记到笔记 / 记一下 / 笔记里记一下 / 沉淀 / 沉淀一下 / 存到 vault / 存一下 / 存档 / 存到知识库 / 知识库 / 备忘录 / 双链 / 回链 / 按领域归档 / 提升热度 / 日记 / 每日笔记 / remember this / save this / save to vault / save to notes / memo it / note this / capture this / second brain / knowledge base / daily note / backlinks / link this note."
+version: 0.9.0
+description: "Sink knowledge into a local Obsidian vault with bash. Use when the user wants to capture, save, record, or sink knowledge, notes, learnings, decisions, meeting takeaways, code snippets, CLI commands, or research into their memo vault / second brain / Obsidian knowledge base; or to create, edit, link, search, classify by domain, promote by heat, distill raw notes, recall ranked context, check vault health, maintain backlinks and skill SOPs, or save reusable shell commands as snippets. Trigger phrases: 记到笔记 / 记一下 / 笔记里记一下 / 沉淀 / 沉淀一下 / 存到 vault / 存一下 / 存档 / 存到知识库 / 知识库 / 备忘录 / 双链 / 回链 / 按领域归档 / 提升热度 / 日记 / 每日笔记 / 记这个命令 / 存成 snippet / remember this / save this / save to vault / save to notes / memo it / note this / capture this / save this command / snippet this / second brain / knowledge base / daily note / backlinks / link this note."
 ---
 
 # MemoVault
@@ -20,7 +20,7 @@ directories are pointer stubs that redirect here.
 - Never write outside the vault (`$AGENT_MEMO_VAULT`, default `~/.agent-memo-vault`).
 - Always run preflight before the first vault operation in a session.
 - Heat values are exactly one of: `seedling`, `growing`, `evergreen`.
-- Optional `kind` is exactly one of: `raw`, `atom`, `scenario`, `persona`, `skill`.
+- Optional `kind` is exactly one of: `raw`, `atom`, `scenario`, `persona`, `skill`, `snippet`.
 - Confirm with the user before deleting or bulk moving notes.
 
 ## 1. Resolve the vault and the helper
@@ -99,7 +99,7 @@ Every note carries frontmatter:
 ---
 title: Human Readable Title
 domain: <area>            # one domain; maps to a folder under brain/<domain>/
-kind: atom                 # optional: raw | atom | scenario | persona | skill
+kind: atom                 # optional: raw | atom | scenario | persona | skill | snippet
 tags: [tag-a, tag-b]       # freeform; nested tags allowed as parent/child
 heat: seedling             # seedling | growing | evergreen
 status: active             # optional: active | superseded (omit = active)
@@ -165,14 +165,21 @@ single shell/filesystem implementation in `scripts/lib/fs.sh`.
 # Daily note (legacy / human Obsidian habit; not the agent L0 path)
 "$MM" daily                      # show today's daily note path/contents
 "$MM" daily:append "- [ ] task"  # append to today's daily note
+
+# CLI snippets (kind: snippet; pet semantics; helper never execs)
+"$MM" snip new "<description>" --command "..." [--tags a,b]
+"$MM" snip list [--tag t] [--limit N]
+"$MM" snip search "<query>" [--tag t] [--limit N]
+"$MM" snip get "<description>" [--set name=value]
+"$MM" snip rm "<description>" --yes
 ```
 
 ### Retrieve
 
 ```bash
-"$MM" search "<query>"                 # brain/ full text; excludes kind:raw + superseded by default
+"$MM" search "<query>"                 # brain/ full text; excludes kind:raw, kind:snippet, superseded
 "$MM" search "<query>" --limit 20 [--domain d] [--kind k] [--heat h] \
-  [--include-raw] [--include-superseded]
+  [--include-raw] [--include-snippet] [--include-superseded]
 "$MM" recall "<query>" [--limit 5] [--no-graph] [--include-superseded]
                                        # token-OR FTS + one-hop graph RRF
 "$MM" cite "<Title>"                   # record that a note was used in an answer
@@ -236,10 +243,11 @@ At the start of answering a user request:
    Do not dump 4+ keywords; `hint=wide_query` means cut the query. Fall back
    to `search` if needed. Helper token-ORs the words (they need not be a
    consecutive phrase).
-2. Helper excludes `kind: raw` and domain MOC indexes (`_*-MOC.md`). It ranks
-   by token overlap, then heat/kind. Progressive disclosure: use
-   titles/snippets first; `read` at most **3** notes per task (usually 1).
-   To open a domain map, use `search` or `moc <domain>` — not `recall`.
+2. Helper excludes `kind: raw`, `kind: snippet`, and domain MOC indexes
+   (`_*-MOC.md`). It ranks by token overlap, then heat/kind. Progressive
+   disclosure: use titles/snippets first; `read` at most **3** notes per
+   task (usually 1). To open a domain map, use `search` or `moc <domain>`
+   — not `recall`. For CLI commands use `snip search` / `snip get`.
 3. When a note materially affects the answer, run `cite "<title>"` and mention
    the note briefly.
 4. If the first recall misses, retry once with the shortest distinctive token,
@@ -280,6 +288,25 @@ When the turn produced a reusable how-to that would save future turns:
 2. Structure the body: Trigger, Steps, Verify, Related (see CLASSIFICATION /
    protocol; vault `templates/` are optional for humans only).
 3. Link related domain atoms/scenarios with `[[wikilinks]]`.
+
+### CLI snippets (commands)
+
+Reusable shell commands live in `kind: snippet` (not SOP `kind: skill`).
+Default `recall` / `search` skip them. The helper never executes stored
+commands.
+
+1. User says "save this command" / "snippet this" / "remember this command" /
+   "记这个命令" / "存成 snippet" / "这段以后要用" / "pet 一下": run
+   `snip new "<description>" --command "..." [--tags a,b]`, then confirm
+   title and command.
+2. A non-trivial re-runnable CLI from this turn (flags, pipes, placeholders)
+   that the user will look up later: propose `snip new` first, write after
+   confirmation.
+3. Do not store one-off debug commands, secrets, or machine-specific paths
+   (unless parameterized as `<name>` or `<name=default>`).
+4. Retrieve with `snip search` / `snip list`, then `snip get`. Cite the
+   title when it affected the answer.
+5. Search existing snippets before creating (duplicate description fails).
 
 ### Health (self-check)
 
@@ -327,6 +354,9 @@ The helper always runs in the single shell/filesystem runtime:
 
 - Notes are plain markdown files under `$AGENT_MEMO_VAULT/brain/<domain>/`.
 - `search` uses `ripgrep` (`rg`), falling back to `grep -rn` (phrase / regex).
+  Default `search` and `recall` exclude `kind: raw` and `kind: snippet`.
+  Use `snip search` / `snip get` for CLI commands, or
+  `search --include-snippet` / `--kind snippet`.
 - `recall` splits the query on whitespace, matches each token as a fixed
   string (OR), ranks by how many tokens hit, then one-hop graph RRF + heat/kind.
   Domain MOC files (`_*-MOC.md` / `tags: [moc]`) are omitted from default
@@ -357,6 +387,8 @@ deprecation warning if it sees `MM_FORCE_FS=1`.
 - Vector / semantic search: deferred. The architecture reserves a slot; see
   `docs/DEVELOPMENT.md`. For now use `recall` / full text `search` plus tags and
   backlinks.
+- The `pet` binary, gist/TOML sync, and executing stored snippets: not a
+  runtime dependency. Use `snip` for CLI commands.
 - Obsidian Sync, Publish, Bases, plugins: not exposed by this skill.
 - Human-rated answer quality scores: `health` uses proxy metrics only
   (`recall_hit_rate`, token-n buckets, `use_rate`, `cite_7d`, `read_7d`,

@@ -1118,5 +1118,36 @@ mode so distill provenance closes the loop.
 ### Review
 - `./scripts/e2e/run.sh`：pass=142 fail=0。本机 `health` 的 `summary=` 见本轮实测。
 
+## 23. Entry: CLI snippet library (2026-09-04)
+
+### Research
+- pet is an interactive TOML CLI snippet manager (fzf, exec, gist). Conflicts
+  with vault-only writes, bash-only runtime, and non-interactive agents.
+
+### Innovate
+- A wrap pet. B bash-native pet semantics in vault (chosen). C reuse
+  `new`/`search` only.
+
+### Plan
+- `docs/superpowers/specs/2026-09-04-snippet-library-design.md`
+- `docs/superpowers/plans/2026-09-04-snippet-library.md`
+
+### Execute
+- `scripts/lib/snip.sh`: `snip new|list|search|get|rm` (alias `snippet`); fence
+  extract; `<name=default>` expand; never exec.
+- `scripts/lib/fs.sh`: `kind: snippet` enum; heat `growing`; default
+  search/recall exclude; `--include-snippet`; `--kind snippet` implies include.
+- `scripts/lib/obs.sh`: `kind_snippet=` after `kind_skill=`.
+- `scripts/memovault.sh` dispatch + usage; `scripts/e2e/suites/10-snip.sh` +
+  `run.sh` suite list.
+- `SKILL.md` / `_protocol.md` CLI snippets protocol; ARCHITECTURE /
+  CLASSIFICATION / DEVELOPMENT / AGENTS / README*; `VERSION` `0.9.0`;
+  CHANGELOG `[0.9.0]`.
+
+### Review
+- `./scripts/e2e/run.sh`: pass=178 fail=0. `bash -n` clean.
+- `grep -E 'eval |sh -c|bash -c' scripts/lib/snip.sh`: no match.
+
+
 
 

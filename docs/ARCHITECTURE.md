@@ -17,6 +17,7 @@ Non goals (this version):
 - Cloud sync, publishing, multi vault federation.
 - A custom daemon or background indexer.
 - Native PowerShell business logic for Windows (WSL2 only).
+- Wrapping the `pet` binary, gist/TOML sync, or executing stored snippets.
 - A perfect Markdown AST (nested fences, inline code containing `[[...]]`).
   The rewriter handles fenced code blocks; inline code is not protected in v1.
 
@@ -33,6 +34,7 @@ Non goals (this version):
           |  scripts/lib/classify.sh      |  domain/heat/MOC
           |  scripts/lib/obs.sh           |  ledger / health / suggest
           |  scripts/lib/eval.sh          |  recall hit@k fixture
+          |  scripts/lib/snip.sh          |  CLI snippets (kind: snippet)
           +---------------+---------------+
                           |
           +---------------v---------------+
@@ -92,7 +94,8 @@ upgrade)` line to stderr.
 
 Dispatch is the `main()` case in `scripts/memovault.sh`. Vault CRUD and
 graph/search live in `scripts/lib/fs.sh`, `rename` in `lib/rewrite.sh`,
-ledger/health/suggest in `lib/obs.sh`, and `eval` in `lib/eval.sh`. There is
+ledger/health/suggest in `lib/obs.sh`, `eval` in `lib/eval.sh`, and CLI
+snippets in `lib/snip.sh`. There is
 no second runtime column; the table is single-track.
 
 | Subcommand | Implementation |
@@ -105,8 +108,9 @@ no second runtime column; the table is single-track.
 | `read` | `cat` |
 | `distill` | `new` atom/scenario + `sources` + raw pointer |
 | `daily` / `daily:append` | legacy `daily/YYYY-MM-DD.md` (not agent L0) |
-| `search` | `rg`/`grep` under `brain/`; excludes `kind:raw` and superseded by default; ledger `event=search` on the public subcommand only (`dedupe` internal retrieval is not logged) |
-| `recall` | whitespace token-OR (`rg -F` per token), rank by token hits, then one-hop RRF + heat/kind; skips `_*-MOC.md` / `tags: [moc]` (search still finds maps) |
+| `search` | `rg`/`grep` under `brain/`; excludes `kind:raw`, `kind:snippet`, and superseded by default; `--include-snippet` or `--kind snippet` includes snippets; ledger `event=search` on the public subcommand only (`dedupe` internal retrieval is not logged) |
+| `recall` | whitespace token-OR (`rg -F` per token), rank by token hits, then one-hop RRF + heat/kind; skips `_*-MOC.md` / `tags: [moc]` and `kind: snippet` (search still finds maps; use `snip search` for commands) |
+| `snip` / `snippet` | CLI snippet CRUD in `lib/snip.sh`; writes `brain/snippets/`; never execs stored commands |
 | `cite` / `feedback` | append ledger events |
 | `dedupe` | title-normalization near-duplicate candidates |
 | `suggest` | promote/dedupe suggestions from ledger + light vault scan |

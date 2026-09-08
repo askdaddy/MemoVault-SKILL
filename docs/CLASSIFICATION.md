@@ -42,7 +42,8 @@ updated: 2026-07-13
 Field rules:
 - `title` - human readable, unique in the vault. Matches the filename stem.
 - `domain` - lowercase, single token or `kebab-case`. Matches the folder name.
-- `kind` - optional. One of `raw`, `atom`, `scenario`, `persona`, `skill`.
+- `kind` - optional. One of `raw`, `atom`, `scenario`, `persona`, `skill`,
+  `snippet`. Omit to keep ordinary domain-note behavior.
   Omit to keep ordinary domain-note behavior.
 - `tags` - YAML list. Nested tags use `parent/child` (e.g. `lang/rust`).
 - `heat` - exactly one of `seedling`, `growing`, `evergreen`.
@@ -68,6 +69,7 @@ folder tree. Inspired by L0-L3 + Skill assets; recall prefers higher structure.
 | `scenario` | Project or scene block (L2) | `brain/<domain>/` + MOCs | seedling |
 | `persona` | Stable preference / hard constraint (L3) | rare domain notes | seedling |
 | `skill` | Reusable SOP (Trigger / Steps / Verify) | `brain/skills/` | growing |
+| `snippet` | Reusable CLI command (pet semantics) | `brain/snippets/` | growing |
 
 Rules:
 - Omit `kind` when unsure; treat as an ordinary domain note.
@@ -78,6 +80,8 @@ Rules:
 - Skill notes use Trigger / Steps / Verify / Related (protocol body recipe).
   Vault `templates/skill.md` is optional for humans in Obsidian; it is not the
   agent write source.
+- CLI commands use `kind: snippet` under `brain/snippets/` (or `snip new`).
+  Default `recall` / `search` skip them; retrieve with `snip search` / `snip get`.
 
 ## 4. Domains
 

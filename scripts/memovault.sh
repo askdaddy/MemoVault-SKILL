@@ -109,6 +109,8 @@ MM_VAULT="${AGENT_MEMO_VAULT:-$HOME/.agent-memo-vault}"
 . "$MM_ROOT/lib/obs.sh"
 # shellcheck source=lib/eval.sh
 . "$MM_ROOT/lib/eval.sh"
+# shellcheck source=lib/snip.sh
+. "$MM_ROOT/lib/snip.sh"
 
 # MM_FORCE_FS is deprecated. The runtime is always shell/fs now; if a caller
 # still exports it (e.g. an old env.sh or e2e harness), warn once and ignore.
@@ -198,7 +200,12 @@ Capture / edit:
 
 Retrieve:
   search <query> [--limit N] [--domain D] [--kind K] [--heat H]
-                 [--include-raw] [--include-superseded]
+                 [--include-raw] [--include-snippet] [--include-superseded]
+  snip new "<desc>" --command "..." [--tags a,b]
+  snip list [--tag t] [--limit N]
+  snip search "<query>" [--tag t] [--limit N]
+  snip get "<desc>" [--set name=value]
+  snip rm "<desc>" --yes
   recall <query> [--limit N] [--no-graph] [--include-superseded]
   cite <title>                  record that a note was used in an answer
   feedback <title> +1|-1        explicit reinforce signal (ledger only)
@@ -247,6 +254,7 @@ main() {
     daily)        mmfs_daily ;;
     daily:append) mmfs_daily_append "${1:-}" ;;
     search)       MM_SEARCH_OBS=1 mmfs_search "$@" ;;
+    snip|snippet) mm_snip_main "$@" ;;
     recall)       mmfs_recall "$@" ;;
     cite)         mm_obs_cite "${1:-}" ;;
     feedback)     mm_obs_feedback "${1:-}" "${2:-}" ;;

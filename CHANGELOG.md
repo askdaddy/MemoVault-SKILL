@@ -11,6 +11,20 @@ human-facing release log. Every agent change in this repository must add an
 entry here in the same Execute (`AGENTS.md` section 5): use `[Unreleased]`
 unless `VERSION` also bumps, in which case add `## [x.y.z] - YYYY-MM-DD`.
 
+## [Unreleased]
+
+## [0.9.0] - 2026-09-04
+
+### Added
+
+- `snip` / `snippet` subcommands for a vault-local CLI snippet library (pet
+  semantics: description, command, tags, `<name=default>`). Helper never
+  executes stored commands.
+- Optional `kind: snippet` (default heat `growing`, home `brain/snippets/`).
+- Default `recall` / `search` exclude snippets; `search --include-snippet` and
+  `search --kind snippet` include them.
+- `health` field `kind_snippet=` (not counted in `kind_other`).
+
 ## [0.8.0] - 2026-08-28
 
 ### Added

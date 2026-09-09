@@ -1148,6 +1148,52 @@ mode so distill provenance closes the loop.
 - `./scripts/e2e/run.sh`: pass=178 fail=0. `bash -n` clean.
 - `grep -E 'eval |sh -c|bash -c' scripts/lib/snip.sh`: no match.
 
+## 24. Entry: 中文自检报告格式（2026-09-01）
+
+### Research
+- 2026-09-01 本机 `health`：检索 labeled 高、`use_rate` 低；用户要求把报告写成中文并固定格式。
+
+### Innovate
+- 报告进 git `docs/health-reports/`，不进 vault；规则与实例分离。
+
+### Plan
+- 用户本轮明确要求：中文报告 + 生成规则文档，供后续 agent 复用。
+
+### Execute
+- `docs/health-reports/README.md` 格式真源；实例文件名为 UTC ISO 时间戳（`:` 改为 `-`）。
+- 首份实例：`docs/health-reports/2026-09-01T01-56-50Z.md`。
+- `AGENTS.md` / README* / `CHANGELOG.md` `[Unreleased]` 指针。
+
+### Review
+- 章节名与骨架与 09-01 实例一致；无 helper 行为变更，不跑 e2e。
+
+## 25. Entry: recall argv + use-loop protocol (2026-09-09)
+
+### Research
+- 2026-09-09 本机 health：28 次 recall 中 5 次 `q=--limit`。`mmfs_recall`
+  把 `$1` 当查询。`use_rate=35` 但 `read_7d=2`。用户确认按三条建议执行。
+
+### Innovate
+- A 只改协议示例（agent 仍会 flag-first）。B helper 全 argv 解析 + 协议
+  read-then-cite（选）。C 同时改 search/dedupe argv（非本包）。
+
+### Plan
+- `docs/superpowers/specs/2026-09-09-recall-argv-protocol-design.md`
+- `docs/superpowers/plans/2026-09-09-recall-argv-protocol.md`
+
+### Execute
+- `scripts/lib/fs.sh` `mmfs_recall`：flag 可在查询前后；空查询报错。
+- e2e `03-retrieve.sh`：flag-first 命中 + ledger `q=` 为查询词 + 无查询
+  非 0 退出。
+- SKILL / `_protocol.md` / AGENTS / ARCHITECTURE / README*：flag-first 与
+  read-then-cite。`VERSION` `0.9.1`；CHANGELOG `[0.9.1]`。
+- Vault（已确认）：promote「Memory Loop 0.6.0 产品决策」「文档默认使用中文」；
+  沉淀一条 flag 顺序 atom。
+
+### Review
+- `./scripts/e2e/run.sh`: pass=182 fail=0. `bash -n` clean on helper + lib.
+- Vault: two promotes to growing; atom `recall 允许 flag 写在查询前`.
+
 
 
 

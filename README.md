@@ -11,7 +11,7 @@ same vault in Obsidian for browsing.
 | | |
 |---|---|
 | Skill name | `memovault` |
-| Version | `0.9.0` (see `VERSION`) |
+| Version | `0.9.1` (see `VERSION`) |
 | Skill source (after install) | `~/.agents/skills/memovault/` |
 | Knowledge vault | `~/.agent-memo-vault/` |
 | Vault override | `AGENT_MEMO_VAULT` |
@@ -108,7 +108,8 @@ Canonical agent contract: `SKILL.md`.
 
 Injected adapters tell agents to:
 
-1. **Recall** at the start of a task (`recall`, fall back to `search`)
+1. **Recall** at the start of a task (`recall`, fall back to `search`). Flags
+   may precede the query. When a hit is used, `read` then `cite`.
 2. **Propose then capture** durable knowledge (or write immediately on explicit
    "remember" / "记一下" phrases)
 3. **Distill** inbox/raw into `atom` / `scenario` via `distill` (or `sources` +
@@ -147,6 +148,7 @@ supersedes the 2026-08-03 dual-mode gate).
 | `docs/CLI-REFERENCE.md` | Optional Obsidian CLI reference (humans; not a runtime dependency) |
 | `docs/DEVELOPMENT.md` | Extending adapters / phases / e2e pointers |
 | `docs/RIPER.md` | Spec-driven change log |
+| `docs/health-reports/` | Dated vault self-check reports (`README.md` is the format spec) |
 
 ## Hard constraints
 

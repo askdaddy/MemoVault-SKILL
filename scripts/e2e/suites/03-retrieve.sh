@@ -91,3 +91,25 @@ case "$moc_search" in
     ;;
   *) e2e_fail "search still finds domain MOC ($E2E_PHASE)" "out=$moc_search" ;;
 esac
+
+# 0.9.1: flags may precede the query; --limit is never the query
+flag_tok="FLAGTOK_${E2E_STEM// /_}"
+flag_t="${E2E_STEM} FlagFirst"
+e2e_mm new "$dom" "$flag_t" --kind atom --body "unique $flag_tok" >/dev/null 2>&1 || true
+rout_flag="$(e2e_mm recall --limit 3 "$flag_tok" --no-graph 2>/dev/null || true)"
+assert_contains "$rout_flag" "title=$flag_t" "recall flag-first finds query ($E2E_PHASE)"
+last_flag="$(grep 'event=recall' "$E2E_VAULT/.memovault/ledger.log" | tail -1)"
+case "$last_flag" in
+  *"q=$flag_tok"*) e2e_pass "recall flag-first ledger q is query ($E2E_PHASE)" ;;
+  *) e2e_fail "recall flag-first ledger q is query ($E2E_PHASE)" "line=$last_flag" ;;
+esac
+case "$last_flag" in
+  *"q=--limit"*) e2e_fail "recall flag-first ledger q is not --limit ($E2E_PHASE)" "line=$last_flag" ;;
+  *) e2e_pass "recall flag-first ledger q is not --limit ($E2E_PHASE)" ;;
+esac
+
+if e2e_mm recall --limit 3 >/dev/null 2>&1; then
+  e2e_fail "recall --limit without query exits nonzero ($E2E_PHASE)"
+else
+  e2e_pass "recall --limit without query exits nonzero ($E2E_PHASE)"
+fi

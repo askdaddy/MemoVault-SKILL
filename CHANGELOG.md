@@ -13,6 +13,28 @@ unless `VERSION` also bumps, in which case add `## [x.y.z] - YYYY-MM-DD`.
 
 ## [Unreleased]
 
+### Added
+
+- Dated vault self-check reports under `docs/health-reports/` (Chinese), with
+  generation rules and a fixed section list in `docs/health-reports/README.md`.
+  Filenames use UTC ISO timestamps (`YYYY-MM-DDTHH-MM-SSZ.md`). Instances:
+  `2026-09-01T01-56-50Z.md` (0.8.0), `2026-09-08T03-00-48Z.md` (0.9.0),
+  `2026-09-09T02-48-17Z.md` (0.9.0).
+
+## [0.9.1] - 2026-09-09
+
+### Fixed
+
+- `recall` parses `--limit` / `--no-graph` / `--include-superseded` before or
+  after the query. `recall --limit 5 "tokens"` no longer logs `q=--limit`.
+  `recall --limit N` without a query exits nonzero.
+
+### Changed
+
+- Protocol: when a recall hit materially affects the answer, `read` then
+  `cite`. Do not cite unused start-of-turn hits.
+
+
 ## [0.9.0] - 2026-09-04
 
 ### Added

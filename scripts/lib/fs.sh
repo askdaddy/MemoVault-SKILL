@@ -543,17 +543,30 @@ mmfs_query_tokens() {
 # Ranked recall with optional one-hop graph expansion + simplified RRF.
 # Query is token-OR: each whitespace token is a fixed-string match; notes are
 # ranked by how many tokens hit, then existing RRF + heat/kind.
+# Flags may appear before or after the query. Unknown --* is an error so
+# `recall --limit 5 tokens` cannot log q=--limit.
 # Flags: --limit N --no-graph --include-superseded
 # Lines: path=... title=... kind=... heat=... snippet=...
 mmfs_recall() {
-  local q="${1:-}"; shift 2>/dev/null || true
-  local limit=5 use_graph=1 include_superseded=0
+  local q="" limit=5 use_graph=1 include_superseded=0
   while [ $# -gt 0 ]; do
     case "$1" in
-      --limit) limit="${2:-5}"; shift 2 ;;
+      --limit)
+        [ $# -ge 2 ] || mm_die "recall: --limit requires a value"
+        limit="$2"
+        shift 2
+        ;;
       --no-graph) use_graph=0; shift ;;
       --include-superseded) include_superseded=1; shift ;;
-      *) shift ;;
+      --*) mm_die "recall: unknown flag $1" ;;
+      *)
+        if [ -n "$q" ]; then
+          q="$q $1"
+        else
+          q="$1"
+        fi
+        shift
+        ;;
     esac
   done
   [ -n "$q" ] || mm_die "usage: recall <query> [--limit N] [--no-graph] [--include-superseded]"

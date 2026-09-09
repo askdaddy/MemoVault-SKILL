@@ -1,6 +1,6 @@
 ---
 name: memovault
-version: 0.9.0
+version: 0.9.1
 description: "Sink knowledge into a local Obsidian vault with bash. Use when the user wants to capture, save, record, or sink knowledge, notes, learnings, decisions, meeting takeaways, code snippets, CLI commands, or research into their memo vault / second brain / Obsidian knowledge base; or to create, edit, link, search, classify by domain, promote by heat, distill raw notes, recall ranked context, check vault health, maintain backlinks and skill SOPs, or save reusable shell commands as snippets. Trigger phrases: 记到笔记 / 记一下 / 笔记里记一下 / 沉淀 / 沉淀一下 / 存到 vault / 存一下 / 存档 / 存到知识库 / 知识库 / 备忘录 / 双链 / 回链 / 按领域归档 / 提升热度 / 日记 / 每日笔记 / 记这个命令 / 存成 snippet / remember this / save this / save to vault / save to notes / memo it / note this / capture this / save this command / snippet this / second brain / knowledge base / daily note / backlinks / link this note."
 ---
 
@@ -181,6 +181,7 @@ single shell/filesystem implementation in `scripts/lib/fs.sh`.
 "$MM" search "<query>" --limit 20 [--domain d] [--kind k] [--heat h] \
   [--include-raw] [--include-snippet] [--include-superseded]
 "$MM" recall "<query>" [--limit 5] [--no-graph] [--include-superseded]
+                                       # flags may precede <query>
                                        # token-OR FTS + one-hop graph RRF
 "$MM" cite "<Title>"                   # record that a note was used in an answer
 "$MM" feedback "<Title>" +1|-1         # explicit reinforce signal (ledger only)
@@ -242,14 +243,16 @@ At the start of answering a user request:
 1. Run one `recall` with **1-3 distinctive tokens** (prefer `--limit 5`).
    Do not dump 4+ keywords; `hint=wide_query` means cut the query. Fall back
    to `search` if needed. Helper token-ORs the words (they need not be a
-   consecutive phrase).
+   consecutive phrase). Flags may precede the query
+   (`recall --limit 5 "tokens"`). The query must not start with `--`.
 2. Helper excludes `kind: raw`, `kind: snippet`, and domain MOC indexes
    (`_*-MOC.md`). It ranks by token overlap, then heat/kind. Progressive
    disclosure: use titles/snippets first; `read` at most **3** notes per
    task (usually 1). To open a domain map, use `search` or `moc <domain>`
    — not `recall`. For CLI commands use `snip search` / `snip get`.
-3. When a note materially affects the answer, run `cite "<title>"` and mention
-   the note briefly.
+3. When a note materially affects the answer, `read` it if the snippet is
+   not enough, then `cite "<title>"` and mention the note briefly. Do not
+   `cite` unused ritual hits. A start-of-turn recall is not usage by itself.
 4. If the first recall misses, retry once with the shortest distinctive token,
    then `search`. If still nothing, skip silently (do not narrate).
 
@@ -359,8 +362,10 @@ The helper always runs in the single shell/filesystem runtime:
   `search --include-snippet` / `--kind snippet`.
 - `recall` splits the query on whitespace, matches each token as a fixed
   string (OR), ranks by how many tokens hit, then one-hop graph RRF + heat/kind.
-  Domain MOC files (`_*-MOC.md` / `tags: [moc]`) are omitted from default
-  `recall` so the index cannot crowd out leaf notes. `search` still finds them.
+  Flags (`--limit`, `--no-graph`, `--include-superseded`) may appear before or
+  after the query; a missing query is an error. Domain MOC files (`_*-MOC.md` /
+  `tags: [moc]`) are omitted from default `recall` so the index cannot crowd
+  out leaf notes. `search` still finds them.
 - `backlinks`/`links` scan for `[[Title]]` text (approximate; aliases not fully
   resolved).
 - `rename` rewrites `[[wikilinks]]` across the vault (link-safe) via

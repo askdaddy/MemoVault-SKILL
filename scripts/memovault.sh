@@ -207,6 +207,7 @@ Retrieve:
   snip get "<desc>" [--set name=value]
   snip rm "<desc>" --yes
   recall <query> [--limit N] [--no-graph] [--include-superseded]
+                                flags may precede <query>
   cite <title>                  record that a note was used in an answer
   feedback <title> +1|-1        explicit reinforce signal (ledger only)
   dedupe <query-or-title>       near-duplicate candidates

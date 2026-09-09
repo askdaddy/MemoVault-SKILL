@@ -109,7 +109,7 @@ no second runtime column; the table is single-track.
 | `distill` | `new` atom/scenario + `sources` + raw pointer |
 | `daily` / `daily:append` | legacy `daily/YYYY-MM-DD.md` (not agent L0) |
 | `search` | `rg`/`grep` under `brain/`; excludes `kind:raw`, `kind:snippet`, and superseded by default; `--include-snippet` or `--kind snippet` includes snippets; ledger `event=search` on the public subcommand only (`dedupe` internal retrieval is not logged) |
-| `recall` | whitespace token-OR (`rg -F` per token), rank by token hits, then one-hop RRF + heat/kind; skips `_*-MOC.md` / `tags: [moc]` and `kind: snippet` (search still finds maps; use `snip search` for commands) |
+| `recall` | whitespace token-OR (`rg -F` per token), rank by token hits, then one-hop RRF + heat/kind; flags may precede the query; skips `_*-MOC.md` / `tags: [moc]` and `kind: snippet` (search still finds maps; use `snip search` for commands) |
 | `snip` / `snippet` | CLI snippet CRUD in `lib/snip.sh`; writes `brain/snippets/`; never execs stored commands |
 | `cite` / `feedback` | append ledger events |
 | `dedupe` | title-normalization near-duplicate candidates |

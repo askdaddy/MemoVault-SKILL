@@ -10,7 +10,7 @@ markdown 读写 vault 目录下同一批文件。人可以另外用 Obsidian 桌
 | | |
 |---|---|
 | Skill 名 | `memovault` |
-| 版本 | `0.9.0`（见 `VERSION`） |
+| 版本 | `0.9.1`（见 `VERSION`） |
 | 安装后 skill 源 | `~/.agents/skills/memovault/` |
 | 知识库 vault | `~/.agent-memo-vault/` |
 | Vault 覆盖变量 | `AGENT_MEMO_VAULT` |
@@ -101,7 +101,7 @@ Agent 侧契约以 `SKILL.md` 为准。
 
 注入到各 agent 的适配器会要求：
 
-1. **召回**：任务开始时用 1–3 个辨识词 `recall`（失败再用 `search`）；helper 按词 OR 匹配，默认跳过领域 MOC，再按 heat/kind 排序
+1. **召回**：任务开始时用 1–3 个辨识词 `recall`（失败再用 `search`）；flag 可写在查询前；命中且用到时先 `read` 再 `cite`；helper 按词 OR 匹配，默认跳过领域 MOC
 2. **先提议再写入**：沉淀可复用知识；用户明确说「记一下 / remember this」则立即写
 3. **蒸馏**：`distill` 或手写把 inbox/raw 提炼为 `atom` / `scenario`，带 `sources` 与 `[[raw-title]]`
 4. **Skill SOP**：`brain/skills/` + `--kind skill`（体例见协议；vault templates 可选）
@@ -136,6 +136,7 @@ Agent 编排 skill：`skills/testing-memovault/SKILL.md`
 | `docs/CLI-REFERENCE.md` | 可选的 Obsidian CLI 参考（人用；非运行时依赖） |
 | `docs/DEVELOPMENT.md` | 扩展适配器 / 阶段 / e2e 指针 |
 | `docs/RIPER.md` | 规格驱动变更记录 |
+| `docs/health-reports/` | 记忆库例行自检报告（`README.md` 为格式与生成规则） |
 
 ## 硬约束
 

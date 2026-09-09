@@ -56,6 +56,7 @@ docs/
   DEVELOPMENT.md       how to extend: adapters, phases, vector search slot
   RIPER.md             SDD-RIPER process record (spec + decisions)
   INSTALL.md           per agent install guide
+  health-reports/      vault self-check reports (README = format spec)
   superpowers/         approved specs and implementation plans
 scripts/
   memovault.sh         entry: preflight + subcommand dispatch
@@ -90,6 +91,9 @@ Full surface: `preflight`, `upgrade`, `new`, `append`, `prepend`, `read`,
 `tags`, `by-tag`, `backlinks`, `links`, `orphans`, `unresolved`, `move`,
 `rename`, `promote`, `supersede`, `moc`, `by-heat`, `health`, `stats`, `eval`,
 `ledger:rotate`, `snip` (alias `snippet`).
+
+`recall` accepts flags before or after the query (`recall --limit 5 "tokens"`);
+a missing query is an error so `--limit` cannot be logged as `q=`.
 
 `health` prints L0 vault counts plus L1/L2 ledger proxies (inventory and
 efficacy). Prefer `summary=`, `recall_hit_rate`, token-n hit rates,
@@ -157,5 +161,6 @@ Rules:
 - Extending the skill: `docs/DEVELOPMENT.md`
 - Install guide: `docs/INSTALL.md`
 - Process record and spec history: `docs/RIPER.md`
+- Vault self-check reports (Chinese; format spec): `docs/health-reports/`
 - Release log (mandatory for every agent change): `CHANGELOG.md`
 - Approved specs and plans: `docs/superpowers/`

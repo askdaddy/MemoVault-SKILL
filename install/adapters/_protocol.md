@@ -10,15 +10,18 @@ You have a local knowledge vault. Use it proactively, not only when asked.
 
 At the start of answering a user request, before you respond:
 - Run one `__MEMOVAULT_HELPER__ recall "<1-3 distinctive tokens>"` (prefer `--limit 5`).
-  Do not dump 4+ keywords. If recall is unavailable, fall back to `search`.
+  Do not dump 4+ keywords. Flags may precede the query
+  (`recall --limit 5 "tokens"`); the query must not start with `--`.
+  If recall is unavailable, fall back to `search`.
   Helper token-ORs the words; they need not be a consecutive phrase.
 - Helper already filters out `kind: raw`, `kind: snippet`, and domain MOC
   indexes (`_*-MOC.md`).
   It ranks by token overlap, then heat/kind. Prefer the top hits; `read` at
   most 3 notes per task (usually 1). Use `search` or `moc <domain>` for maps.
   For CLI commands use `snip search` / `snip get`.
-- When a note materially affects your answer, run
-  `__MEMOVAULT_HELPER__ cite "<title>"` and mention the note briefly.
+- When a note materially affects your answer, `read` it if the snippet is
+  not enough, then `__MEMOVAULT_HELPER__ cite "<title>"` and mention the
+  note briefly. Do not cite unused ritual hits.
 - If the first recall misses, retry once with the shortest distinctive token,
   then `search`. If still nothing, skip silently. Do not narrate
   "nothing found".

@@ -194,7 +194,11 @@ assert_eq "0" "$rh" "ancient hits=1 does not count in 7d ($E2E_PHASE)"
 last_r="$(grep 'event=recall' "$iso2/.memovault/ledger.log" | tail -1)"
 assert_contains "$last_r" "token_n=" "recall ledger has token_n= ($E2E_PHASE)"
 
-today="$(date -u +%Y-%m-%d)"
+if date -u -v-1d +%Y-%m-%d >/dev/null 2>&1; then
+  today="$(date -u -v-1d +%Y-%m-%d)"
+else
+  today="$(date -u -d yesterday +%Y-%m-%d)"
+fi
 printf '%s\n' "ts=${today}T00:00:00Z event=recall q=unrelated_query hits=0 top= token_n=2" > "$iso2/.memovault/ledger.log"
 printf '%s\n' "ts=${today}T04:00:00Z event=capture title=Completely Different Title kind=atom domain=iso op=new" >> "$iso2/.memovault/ledger.log"
 hw2="$(e2e_mm health 2>/dev/null || true)"
@@ -212,7 +216,7 @@ esac
 iso3="$E2E_ROOT/iso-wide-query"
 mkdir -p "$iso3/.memovault" "$iso3/brain/iso"
 E2E_VAULT="$iso3"
-today="$(date -u +%Y-%m-%d)"
+
 {
   i=1
   while [ "$i" -le 5 ]; do
@@ -234,7 +238,7 @@ assert_contains "$hwq" "recall_hit_rate_prev7d=" "health prints recall_hit_rate_
 iso4="$E2E_ROOT/iso-efficacy"
 mkdir -p "$iso4/.memovault" "$iso4/brain/iso"
 E2E_VAULT="$iso4"
-today="$(date -u +%Y-%m-%d)"
+
 if date -u -v-10d +%Y-%m-%d >/dev/null 2>&1; then
   prevd="$(date -u -v-10d +%Y-%m-%d)"
 else
@@ -264,6 +268,66 @@ assert_eq "0" "$rhp" "prev window hit rate 0 ($E2E_PHASE)"
 wqprev="$(printf '%s\n' "$hef" | awk -F= '/^wide_query_7d_prev=/{print $2; exit}')"
 assert_eq "2" "$wqprev" "prev window wide_query ($E2E_PHASE)"
 dhit="$(printf '%s\n' "$hef" | awk -F= '/^delta_recall_hit_rate=/{print $2; exit}')"
-assert_eq "90" "$dhit" "delta_recall_hit_rate vs snap ($E2E_PHASE)"
+assert_eq "-" "$dhit" "legacy snapshot suppresses window delta ($E2E_PHASE)"
+assert_contains "$hef" "delta_orphan_pct=-40" "legacy snapshot retains inventory delta ($E2E_PHASE)"
+hef="$(e2e_mm health 2>/dev/null)"
+assert_contains "$hef" "delta_recall_hit_rate=0" "same window mode restores delta ($E2E_PHASE)"
 
 E2E_VAULT="$old_vault"
+
+# Pin the CLI clock at 2026-11-25T08:00:00Z without changing host time.
+clock_bin="$E2E_ROOT/fixed-clock"
+mkdir -p "$clock_bin"
+export E2E_REAL_DATE="$(command -v date)"
+cat > "$clock_bin/date" <<'EOF'
+#!/usr/bin/env bash
+if [ "$*" = "-u +%s" ]; then
+  printf '1795593600\n'
+else
+  exec "$E2E_REAL_DATE" "$@"
+fi
+EOF
+chmod +x "$clock_bin/date"
+E2E_VAULT="$E2E_ROOT/iso-fixed-window"
+mkdir -p "$E2E_VAULT/.memovault"
+fixed_ledger="$E2E_VAULT/.memovault/ledger.log"
+cat > "$fixed_ledger" <<'EOF'
+ts=2026-11-11T07:59:59Z event=recall hits=1 token_n=4
+ts=2026-11-11T08:00:00Z event=recall hits=1 token_n=4
+ts=2026-11-11T08:00:01Z event=recall hits=0 token_n=4
+ts=2026-11-18T07:59:59Z event=recall hits=1 token_n=1
+ts=2026-11-18T08:00:00Z event=recall hits=1 token_n=2
+ts=2026-11-18T08:00:00Z event=cite title=Previous kind=skill
+ts=2026-11-18T08:00:00Z event=read title=Separate Skill kind=skill
+ts=2026-11-18T08:00:01Z event=recall hits=0 token_n=1
+ts=2026-11-18T08:00:01Z event=cite title=Reuse Skill kind=skill
+ts=2026-11-25T07:59:59Z event=recall hits=1 token_n=2
+ts=2026-11-25T07:59:59Z event=read title=Reuse Skill kind=skill
+ts=2026-11-25T07:59:59Z event=read title=Separate Skill kind=skill
+ts=2026-11-25T08:00:00Z event=recall hits=1
+ts=2026-11-25T08:00:01Z event=recall hits=1 token_n=4
+ts=2026-11-25T08:00:01Z event=cite title=Separate Skill kind=skill
+ts=2026-11-31T00:00:00Z event=recall hits=1
+event=recall hits=1
+EOF
+fixed="$(TZ=UTC PATH="$clock_bin:$PATH" e2e_mm health)"
+fixed_tz="$(TZ=America/New_York PATH="$clock_bin:$PATH" e2e_mm stats)"
+without_delta() { printf '%s\n' "$1" | sed '/^delta_/d'; }
+assert_eq "$(without_delta "$fixed")" "$(without_delta "$fixed_tz")" "stats and health are timezone independent ($E2E_PHASE)"
+for key_value in window_mode=rolling_168h window_start_exclusive=2026-11-18T08:00:00Z \
+  previous_window_start_exclusive=2026-11-11T08:00:00Z window_end_inclusive=2026-11-25T08:00:00Z \
+  previous_window_end_inclusive=2026-11-18T08:00:00Z ledger_status=readable ledger_invalid_ts=2 ledger_future_ts=2 \
+  recall_7d=3 recall_hits_7d=2 recall_7d_prev=3 recall_hits_7d_prev=2 cite_7d=1 cite_7d_prev=1 \
+  recall_nunk_7d=1 wide_query_7d=0 wide_query_7d_prev=1 skill_reuse=1 read_uncited_7d=1; do
+  assert_contains "$fixed" "$key_value" "fixed rolling window $key_value ($E2E_PHASE)"
+done
+assert_contains "$fixed" "summary_counts=recall_candidates=2/3 read=2 cite=1" "summary includes exact counts ($E2E_PHASE)"
+mv "$fixed_ledger" "$fixed_ledger.backup"
+fixed_empty="$(TZ=UTC PATH="$clock_bin:$PATH" e2e_mm health)"
+assert_contains "$fixed_empty" "ledger_status=missing" "missing ledger is visible ($E2E_PHASE)"
+assert_contains "$fixed_empty" "summary_counts=recall_candidates=0/0 read=0 cite=0" "empty window counts ($E2E_PHASE)"
+mkdir "$fixed_ledger"
+fixed_unreadable="$(TZ=UTC PATH="$clock_bin:$PATH" e2e_mm health 2>/dev/null)"
+assert_contains "$fixed_unreadable" "ledger_status=unreadable" "unreadable ledger is visible ($E2E_PHASE)"
+E2E_VAULT="$old_vault"
+unset E2E_REAL_DATE

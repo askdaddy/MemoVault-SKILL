@@ -221,18 +221,19 @@ mm_obs_field() {
   printf '%s' "$rest" | sed -E 's/ [a-z][a-z0-9_]*=.*//'
 }
 
-# Epoch seconds for ledger ts= (ISO UTC). 0 if unparseable.
+# Parse the canonical ledger timestamp and reject normalized invalid dates.
 mm_obs_ts_epoch() {
-  local ts="$1"
-  if date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s >/dev/null 2>&1; then
-    date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s
-    return
-  fi
-  if date -u -d "$ts" +%s >/dev/null 2>&1; then
-    date -u -d "$ts" +%s
-    return
-  fi
-  printf '0'
+  local ts="$1" parsed stamp
+  stamp='%Y-%m-%dT%H:%M:%SZ'
+  parsed="$(date -u -j -f "$stamp" "$ts" "+%s $stamp" 2>/dev/null)" ||
+    parsed="$(date -u -d "$ts" "+%s $stamp" 2>/dev/null)" || return 1
+  [ "${parsed#* }" = "$ts" ] || return 1
+  printf '%s' "${parsed%% *}"
+}
+
+mm_obs_epoch_utc() {
+  local stamp='+%Y-%m-%dT%H:%M:%SZ'
+  date -u -d "@$1" "$stamp" 2>/dev/null || date -u -r "$1" "$stamp"
 }
 
 # Return 0 if title and query share a token of length >= 2.
@@ -288,6 +289,11 @@ mm_obs_dash_neg() {
 }
 
 mm_obs_health() {
+  local now_epoch current_start previous_start observed_at
+  now_epoch="$(date -u +%s)" || return 1
+  current_start=$((now_epoch - 604800))
+  previous_start=$((now_epoch - 1209600))
+  observed_at="$(mm_obs_epoch_utc "$now_epoch")" || return 1
   mmfs_ensure_vault
   local notes_total=0 kind_atom=0 kind_raw=0 kind_scenario=0 kind_persona=0 kind_skill=0 kind_snippet=0 kind_other=0
   local heat_seedling=0 heat_growing=0 heat_evergreen=0
@@ -371,7 +377,7 @@ EOF
     orphan_pct=$((orphan_count * 100 / notes_total))
   fi
 
-  local since since7 since14 recall_7d=0 capture_7d=0 cite_7d=0 promote_7d=0
+  local recall_7d=0 capture_7d=0 cite_7d=0 promote_7d=0
   local recall_hits_7d=0 capture_without_recall_7d=0
   local skill_reuse=0 recapture_dup=0 cite_rate=-1 promote_rate=-1
   local search_7d=0 capture_after_miss_7d=0 recapture_new_dup=0
@@ -385,21 +391,22 @@ EOF
   local cite_7d_prev=0 wide_query_7d_prev=0
   local op ts_full ts_ep token_n cap_ep cap_title miss_ep miss_q delta cap_ts miss_ts
   local titles_new_seen="" dup_new_titles=""
-  local p line ev ts_day hits title_n titles_seen="" dup_titles=""
-  local ledger_ok=1 miss_tmp="" cap_tmp="" cite_tmp="" read_tmp=""
-  local in_cur in_prev ev_title found rt ct snap last_snap oldv snap_tmp snap_n curv
+  local p line ev hits title_n titles_seen="" dup_titles=""
+  local ledger_status=missing invalid_ts=0 future_ts=0
+  local miss_tmp="" cap_tmp="" cite_tmp="" read_tmp="" skill_tmp=""
+  local in_cur ev_title found rt ct snap last_snap oldv snap_tmp snap_n curv comparable
   local hr_s n1_s n4_s ur_s
-  since7="$(mm_obs_days_ago 7)"
-  since14="$(mm_obs_days_ago 14)"
-  since="$since7"
   p="$(mm_obs_ledger_path)"
-  if [ -f "$p" ]; then
-    if ! [ -r "$p" ]; then
+  if [ -e "$p" ]; then
+    if [ -f "$p" ] && [ -r "$p" ]; then
+      ledger_status=readable
+    else
+      ledger_status=unreadable
       mm_log "obs: ledger unreadable; L1/L2 omitted"
-      ledger_ok=0
     fi
   fi
-  if [ "$ledger_ok" = 1 ] && [ -f "$p" ]; then
+  if [ "$ledger_status" = readable ]; then
+    skill_tmp="$(mktemp)"
     miss_tmp="$(mktemp)"
     cap_tmp="$(mktemp)"
     cite_tmp="$(mktemp)"
@@ -407,18 +414,24 @@ EOF
     while IFS= read -r line || [ -n "$line" ]; do
       [ -n "$line" ] || continue
       ts_full="$(mm_obs_field "$line" ts)"
-      ts_day="$(printf '%s' "$ts_full" | cut -c1-10)"
-      [ -n "$ts_day" ] || continue
-      [ "$ts_day" \< "$since14" ] && continue
-      in_cur=0
-      in_prev=0
-      if [ ! "$ts_day" \< "$since7" ]; then
-        in_cur=1
-      else
-        in_prev=1
+      if ! ts_ep="$(mm_obs_ts_epoch "$ts_full")"; then
+        invalid_ts=$((invalid_ts + 1))
+        continue
       fi
-      ts_ep="$(mm_obs_ts_epoch "$ts_full")"
+      if [ "$ts_ep" -gt "$now_epoch" ]; then
+        future_ts=$((future_ts + 1))
+        continue
+      fi
+      [ "$ts_ep" -gt "$previous_start" ] || continue
+      in_cur=0
+      [ "$ts_ep" -le "$current_start" ] || in_cur=1
       ev="$(mm_obs_field "$line" event)"
+      if [ "$in_cur" = 1 ] && { [ "$ev" = read ] || [ "$ev" = cite ]; }; then
+        if [ "$(mm_obs_field "$line" kind)" = skill ]; then
+          ev_title="$(mm_obs_field "$line" title)"
+          [ -z "$ev_title" ] || printf '%s\n' "$ev_title" >> "$skill_tmp"
+        fi
+      fi
       case "$ev" in
         recall)
           hits="$(mm_obs_field "$line" hits)"
@@ -516,19 +529,8 @@ EOF
           if [ "${cap_ts}" \< "${miss_ts}" ]; then
             continue
           fi
-          if [ "${cap_ep:-0}" -gt 0 ] 2>/dev/null && [ "${miss_ep:-0}" -gt 0 ] 2>/dev/null; then
-            delta=$((cap_ep - miss_ep))
-            if [ "$delta" -le 1800 ]; then
-              capture_after_miss_7d=$((capture_after_miss_7d + 1))
-              break
-            fi
-          fi
-          if mm_obs_tokens_overlap "$cap_title" "$miss_q"; then
-            if [ "${cap_ep:-0}" -le 0 ] 2>/dev/null || [ "${miss_ep:-0}" -le 0 ] 2>/dev/null; then
-              cap_day="$(printf '%s' "$cap_ts" | cut -c1-10)"
-              miss_day="$(printf '%s' "$miss_ts" | cut -c1-10)"
-              [ "$cap_day" = "$miss_day" ] || continue
-            fi
+          delta=$((cap_ep - miss_ep))
+          if [ "$delta" -le 1800 ] || mm_obs_tokens_overlap "$cap_title" "$miss_q"; then
             capture_after_miss_7d=$((capture_after_miss_7d + 1))
             break
           fi
@@ -557,26 +559,11 @@ EOF
     rm -f "$cite_tmp" "$read_tmp"
 
     # skill_reuse: distinct skill titles with read|cite count >= 2 in window
-    skill_reuse="$(awk -v since="$since" '
-      {
-        t=""; e=""; title=""; kind="-"
-        for (i=1; i<=NF; i++) {
-          if ($i ~ /^ts=/) t=substr($i, 4, 10)
-          if ($i ~ /^event=/) e=substr($i, 7)
-          if ($i ~ /^title=/) title=substr($i, 7)
-          if ($i ~ /^kind=/) kind=substr($i, 6)
-        }
-        if (t < since) next
-        if ((e == "read" || e == "cite") && kind == "skill" && title != "") {
-          c[title]++
-        }
-      }
-      END {
-        n=0
-        for (x in c) if (c[x] >= 2) n++
-        print n+0
-      }
-    ' "$p")"
+    skill_reuse="$(awk '{ c[$0]++ } END {
+      for (title in c) if (c[title] >= 2) n++
+      print n+0
+    }' "$skill_tmp")"
+    rm -f "$skill_tmp"
   fi
 
   if [ "$capture_7d" -gt 0 ] && [ "$recall_7d" -eq 0 ]; then
@@ -677,7 +664,12 @@ EOF
     for k in notes_total recall_hit_rate recall_7d cite_7d read_7d use_rate orphan_pct kind_other_pct wide_query_7d capture_after_miss_7d skill_reuse moc_count; do
       oldv="$(mm_obs_field "$last_snap" "$k")"
       eval "curv=\$$k"
-      if [ -z "$oldv" ]; then
+      comparable=1
+      case "$k" in
+        notes_total|orphan_pct|kind_other_pct|moc_count) ;;
+        *) [ "$(mm_obs_field "$last_snap" window_mode)" = rolling_168h ] || comparable=0 ;;
+      esac
+      if [ -z "$oldv" ] || [ "$comparable" = 0 ]; then
         printf 'delta_%s=-\n' "$k"
       else
         printf 'delta_%s=%s\n' "$k" "$((curv - oldv))"
@@ -691,6 +683,15 @@ EOF
   ur_s="$(mm_obs_dash_neg "$use_rate")"
   printf 'summary=hit_rate=%s n1=%s n4=%s use_rate=%s cite=%s read=%s uncited_read=%s orphan_pct=%s moc=%s\n' \
     "$hr_s" "$n1_s" "$n4_s" "$ur_s" "$cite_7d" "$read_7d" "$read_uncited_7d" "$orphan_pct" "$moc_count"
+
+  printf 'window_mode=rolling_168h\nobserved_at=%s\n' "$observed_at"
+  printf 'window_start_exclusive=%s\nwindow_end_inclusive=%s\n' \
+    "$(mm_obs_epoch_utc "$current_start")" "$observed_at"
+  printf 'previous_window_start_exclusive=%s\nprevious_window_end_inclusive=%s\n' \
+    "$(mm_obs_epoch_utc "$previous_start")" "$(mm_obs_epoch_utc "$current_start")"
+  printf 'ledger_status=%s\nledger_invalid_ts=%s\nledger_future_ts=%s\n' "$ledger_status" "$invalid_ts" "$future_ts"
+  printf 'summary_counts=recall_candidates=%s/%s read=%s cite=%s\n' \
+    "$recall_hits_7d" "$recall_7d" "$read_7d" "$cite_7d"
 
   # Soft hints for agent self-check (not automatic vault mutations).
   if [ "$inbox_raw_count" -ge 3 ]; then
@@ -726,8 +727,8 @@ EOF
     mkdir -p "$(mm_obs_dir)" 2>/dev/null || { mm_log "obs: cannot mkdir $(mm_obs_dir)"; false; }
   } && {
     snap="$(mm_obs_snap_path)"
-    printf 'ts=%s notes_total=%s recall_hit_rate=%s recall_7d=%s cite_7d=%s read_7d=%s use_rate=%s orphan_pct=%s kind_other_pct=%s wide_query_7d=%s capture_after_miss_7d=%s skill_reuse=%s moc_count=%s\n' \
-      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    printf 'ts=%s window_mode=rolling_168h notes_total=%s recall_hit_rate=%s recall_7d=%s cite_7d=%s read_7d=%s use_rate=%s orphan_pct=%s kind_other_pct=%s wide_query_7d=%s capture_after_miss_7d=%s skill_reuse=%s moc_count=%s\n' \
+      "$observed_at" \
       "$notes_total" "$recall_hit_rate" "$recall_7d" "$cite_7d" "$read_7d" "$use_rate" \
       "$orphan_pct" "$kind_other_pct" "$wide_query_7d" "$capture_after_miss_7d" \
       "${skill_reuse:-0}" "$moc_count" >> "$snap" 2>/dev/null \

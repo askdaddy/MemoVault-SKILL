@@ -45,7 +45,7 @@ MM="$HOME/.agents/skills/memovault/scripts/memovault.sh"
 
 然后：
 
-1. 先读 `summary=`，再读 `use_rate`、`recall_n*_hit_rate`、`delta_*`、`hint=`。
+1. 先读 `summary=`、`summary_counts=` 和 `ledger_status=`，再读 `use_rate`、`recall_n*_hit_rate`、`delta_*`、`hint=`。
 2. 词数桶合计：`labeled_n = recall_n1_7d + recall_n23_7d + recall_n4_7d`；`labeled_hits = recall_n1_hits_7d + recall_n23_hits_7d + recall_n4_hits_7d`。有 `labeled_n` 时 `labeled_hit_rate = labeled_hits * 100 / labeled_n`（整数除法，与 helper 一致）。这是「升级后检索」口径，总评检索时优先于含 `nunk` 的 `recall_hit_rate`。
 3. 对照：`recall_hit_rate_prev7d`、`delta_recall_hit_rate`、`delta_use_rate`。可选：`$VAULT/.memovault/health-snap.log` 最近 3 行。
 4. `kind_other`：列出缺合法 `kind` 的路径（是否全是 MOC）。
@@ -75,7 +75,7 @@ file="$(printf '%s' "$ts" | tr ':' '-')"
 | 技能版本 | 已安装 `VERSION`（如 `0.8.0`） |
 | Helper | 实际执行的 `memovault.sh` 路径 |
 | Vault | `preflight` 的 `vault=` |
-| 窗口 | 近 7 天 vs 上一窗 8–14 天（与 `mm_obs_days_ago` 一致） |
+| 窗口 | 录入两个滚动 168 小时的 UTC 边界与 `window_mode` |
 | 采集 UTC | `YYYY-MM-DDTHH:MM:SSZ`，与标题一致 |
 
 ## 5. 章节清单（顺序与标题必须一致）
@@ -156,7 +156,7 @@ file="$(printf '%s' "$ts" | tr ':' '-')"
 | 技能版本 | |
 | Helper | |
 | Vault | |
-| 窗口 | 近 7 天 vs 上一窗 8-14 天 |
+| 窗口 | 当前和上一段滚动 168 小时的 UTC 边界 |
 | 采集 UTC | YYYY-MM-DDTHH:MM:SSZ |
 
 ## 总评
@@ -224,3 +224,13 @@ summary=
 - 本目录是**仓库例行文档**，不是 vault 笔记，也不替代 `health` 机器输出。
 - 写完报告后：`CHANGELOG.md` 的 `[Unreleased]` 记一条（若本次只新增/更新报告）；不要为写报告而 bump `VERSION`。
 - 用户若要求把结论沉进 vault，另走 capture 协议（先提议，确认后再 `new`/`append`）。
+
+
+## 滚动统计窗口
+
+`T` 取 `observed_at`。当前窗为 `(T - 168h, T]`，上一窗为
+`(T - 336h, T - 168h]`。报告记录两个窗口的 UTC 边界、`ledger_status`、
+`ledger_invalid_ts` 和 `ledger_future_ts`。用 `summary_counts` 保留候选次数、
+召回次数、读取次数和引用次数。零分母或缺失账本和有样本的零计数分别记录。
+`use_rate` 和 `hit_unused_7d` 是计数近似值，逐次采用情况需要单独的关联证据。
+`delta_*` 为 `-` 时保留缺值，注明是否由于历史快照的窗口口径不同。

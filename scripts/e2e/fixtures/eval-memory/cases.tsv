@@ -1,3 +1,20 @@
 c1	unique-eval-token	Eval Hub
 c2	unique-eval-token	Eval Spoke
 c3	PERC copyback RAID 换盘	Eval Perc Sop
+zh1	快照恢复	备份恢复指南
+zh2	备份 挂载顺序	备份恢复指南
+zh3	校验 checksum	备份恢复指南
+en1	RESTORE_BATCH_ID	备份恢复指南
+en2	RESTORE-DRY-RUN	备份恢复指南
+en3	c++.trace	C++ Trace v1.2
+alias1	备份恢复指南	path:brain/eng/restore.md
+alias2	connectpath	C++ Trace v1.2
+alias3	netprobe	C++ Trace v1.2
+graph1	unique-eval-token	path:brain/eng/Eval Spoke.md
+graph2	retired-route	Eval New
+name1	c++.trace	C++ Trace v1.2 Extended
+name2	quoted c++.trace	C++ Trace v1.2
+name3	same-route	path:brain/eng/same.md
+none1	unknown-sentinel-ff13	-
+none2	weak-proxy	-
+none3	retired-only-b5	-

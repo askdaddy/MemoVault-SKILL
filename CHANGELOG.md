@@ -13,6 +13,19 @@ unless `VERSION` also bumps, in which case add `## [x.y.z] - YYYY-MM-DD`.
 
 ## [Unreleased]
 
+### Changed
+
+- `health` and `stats` use adjacent rolling 168-hour UTC windows. Existing field
+  names and formulas remain available. Reports expose boundaries, ledger
+  status, skipped timestamps, and raw counts. Window deltas require matching
+  snapshot modes.
+
+### Added
+
+- The read-only recall evaluation includes 20 fixtures, exact title or path
+  matching, Top 1 and Top 5, and a separate count of false returns for queries
+  with no answer.
+
 ### Added
 
 - Dated vault self-check reports under `docs/health-reports/` (Chinese), with

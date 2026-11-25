@@ -547,7 +547,12 @@ mmfs_query_tokens() {
 # `recall --limit 5 tokens` cannot log q=--limit.
 # Flags: --limit N --no-graph --include-superseded
 # Lines: path=... title=... kind=... heat=... snippet=...
-mmfs_recall() {
+mmfs_recall() { mmfs_recall_ranked 0 "$@"; }
+
+# Evaluation uses the same ranking with structured output and no vault writes.
+mmfs_recall_ranked() {
+  local eval_output="$1"
+  shift
   local q="" limit=5 use_graph=1 include_superseded=0
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -570,7 +575,7 @@ mmfs_recall() {
     esac
   done
   [ -n "$q" ] || mm_die "usage: recall <query> [--limit N] [--no-graph] [--include-superseded]"
-  mmfs_ensure_vault
+  [ "$eval_output" = 1 ] || mmfs_ensure_vault
   [ -d "$MM_VAULT/brain" ] || return 0
 
   local abs rel fpath snippet
@@ -660,7 +665,7 @@ mmfs_recall() {
     done < "$tmpa"
   fi
   if [ ! -s "$tmpa" ]; then
-    mm_obs_log "event=recall" "q=$q_tok" "token_n=$token_n" "hits=0" "top="
+    [ "$eval_output" = 1 ] || mm_obs_log "event=recall" "q=$q_tok" "token_n=$token_n" "hits=0" "top="
     rm -f "$tmpa" "$tmpb" "$tmpm"
     return 0
   fi
@@ -765,6 +770,11 @@ EOF
 
   local ranked hits=0 titles top_tok
   ranked="$(head -n "$limit" "$tmpm")"
+  if [ "$eval_output" = 1 ]; then
+    printf '%s\n' "$ranked" | awk -F '\t' 'NF { print $5 "\t" $6 }'
+    rm -f "$tmpa" "$tmpb" "$tmpm"
+    return 0
+  fi
   hits="$(printf '%s\n' "$ranked" | grep -c . || true)"
   titles="$(printf '%s\n' "$ranked" | awk -F'	' '{ printf "%s%s", (NR>1?",":""), $6 }')"
   top_tok="$(printf '%s' "$titles" | tr ' ' '_')"

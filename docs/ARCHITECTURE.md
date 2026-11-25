@@ -114,7 +114,7 @@ no second runtime column; the table is single-track.
 | `cite` / `feedback` | append ledger events |
 | `dedupe` | title-normalization near-duplicate candidates |
 | `suggest` | promote/dedupe suggestions from ledger + light vault scan |
-| `eval` | fixture vault recall hit@k gate |
+| `eval` | read-only fixture evaluation with hit@k, Top 1/Top 5, and no-answer false returns |
 | `health` / `stats` | L0 vault scan + L1/L2 ledger proxies |
 | `ledger:rotate` | trim ledger.log |
 | `tags` / `tag` / `by-tag` | scan `^tags:` lines |
@@ -148,6 +148,23 @@ token-n buckets, prev-window `*_prev` / `*_prev7d`, `moc_count`, `summary=`,
 `cite_rate` and `recapture_dup` remain with their original formulas
 (deprecated). `heat_evergreen` still includes MOC indexes; `moc_count` is the
 honest map count.
+
+Current-window events satisfy `T - 604800 < ts <= T` and previous-window
+events satisfy `T - 1209600 < ts <= T - 604800`, where `T` is one UTC
+observation instant. The helper reports both boundaries, ledger status,
+skipped invalid and future timestamps, and `summary_counts` with raw recall,
+candidate, read, and cite counts. Legacy ledger rows are accepted without
+migration. Snapshots tagged `window_mode=rolling_168h` support numeric comparisons
+for window-dependent fields when the prior snapshot has the same mode.
+Inventory deltas remain comparable to older snapshots. `use_rate` retains
+integer `100 * cite_7d / recall_7d`; it measures an event-count ratio.
+`hit_unused_7d` is a difference between event counts.
+
+The evaluator uses the same ranking as `recall` without changing either vault.
+The third TSV column accepts a literal title, `path:<vault-relative-path>`,
+or `-` for a query with no answer. The 80% hit@k gate uses positive cases;
+no-answer false returns are reported separately. Top 1 and Top 5 are measured
+from the same ranking regardless of the requested K.
 
 ## 6. Data flow for a capture
 

@@ -1197,3 +1197,17 @@ mode so distill provenance closes the loop.
 
 
 
+
+
+## Entry: rolling health windows and recall baseline (2026-11-25)
+
+- Research: issue #1 identified UTC calendar bucketing and substring-based
+  evaluation as sources of ambiguous evidence.
+- Design: share one observation instant across health metrics and use the
+  existing recall ranking with read-only structured evaluation.
+- Plan: the issue comments record the approved boundaries, compatibility,
+  fixture groups, and verification criteria.
+- Execute: add rolling-window metadata, snapshot compatibility, and a
+  20-case labeled recall baseline. Keep the P0 scope to reporting and evaluation.
+- Review: see [issue #1](https://github.com/askdaddy/MemoVault-SKILL/issues/1)
+  for the frozen plan and verification results.

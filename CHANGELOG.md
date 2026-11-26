@@ -32,7 +32,7 @@ unless `VERSION` also bumps, in which case add `## [x.y.z] - YYYY-MM-DD`.
   generation rules and a fixed section list in `docs/health-reports/README.md`.
   Filenames use UTC ISO timestamps (`YYYY-MM-DDTHH-MM-SSZ.md`). Instances:
   `2026-09-01T01-56-50Z.md` (0.8.0), `2026-09-08T03-00-48Z.md` (0.9.0),
-  `2026-09-09T02-48-17Z.md` (0.9.0).
+  `2026-09-09T02-48-17Z.md` (0.9.0), `2026-09-18T03-13-24Z.md` (0.9.1).
 
 ## [0.9.1] - 2026-09-09
 

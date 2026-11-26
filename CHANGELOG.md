@@ -13,6 +13,8 @@ unless `VERSION` also bumps, in which case add `## [x.y.z] - YYYY-MM-DD`.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-26
+
 ### Changed
 
 - `health` and `stats` use adjacent rolling 168-hour UTC windows. Existing field
@@ -25,8 +27,6 @@ unless `VERSION` also bumps, in which case add `## [x.y.z] - YYYY-MM-DD`.
 - The read-only recall evaluation includes 20 fixtures, exact title or path
   matching, Top 1 and Top 5, and a separate count of false returns for queries
   with no answer.
-
-### Added
 
 - Dated vault self-check reports under `docs/health-reports/` (Chinese), with
   generation rules and a fixed section list in `docs/health-reports/README.md`.

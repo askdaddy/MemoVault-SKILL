@@ -13,6 +13,13 @@ unless `VERSION` also bumps, in which case add `## [x.y.z] - YYYY-MM-DD`.
 
 ## [Unreleased]
 
+### Added
+
+- Archive the v0.10.0 vault self-check in
+  [2026-11-26T08-02-44Z.md](docs/health-reports/2026-11-26T08-02-44Z.md),
+  with a comparison against the September report and the last pre-upgrade
+  snapshot under both calendar-date and rolling 168-hour windows.
+
 ## [0.10.0] - 2026-11-26
 
 ### Changed
